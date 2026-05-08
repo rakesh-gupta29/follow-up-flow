@@ -1,0 +1,2 @@
+- the database connection logic is too simple. use pooling and all.
+- 
