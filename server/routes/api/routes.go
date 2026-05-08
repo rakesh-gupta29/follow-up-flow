@@ -6,14 +6,9 @@ import (
 	"github.com/shingo/server/utils/response"
 )
 
-func RegisterMovieRoutes(app fiber.Router, movieHandler *api.MovieHandler) {
-	apiGroup := app.Group("/api/v1/movies")
-	apiGroup.Get("/health", movieHandler.HealthCheck)
-
-	apiGroup.Get("/", movieHandler.GetAllMovies)
-	apiGroup.Get("/:id", movieHandler.GetMovieByID)
-
-	apiGroup.Use(response.APINotFound)
+func RegisterAdminRoutes(app fiber.Router, authHandler *api.AuthHandler) {
+	authGroup := app.Group("/api/v1/auth")
+	authGroup.Post("/login", authHandler.Login)
 }
 
 func RegisterAppRoutes(app fiber.Router, appHandler *api.AppHandler) {

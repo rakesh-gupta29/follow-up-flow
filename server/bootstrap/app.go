@@ -26,9 +26,12 @@ func New() *Application {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	movieHandler := api.NewMovieHandler(repository.NewMovieRepository(db.Pool))
-	apiRoutes.RegisterMovieRoutes(server, movieHandler)
+	// 3. NEW: Initialize Auth Logic
+	authRepo := repository.NewAdminRepository(db.Client)
+	authHandler := api.NewAuthHandler(authRepo)
+	apiRoutes.RegisterAdminRoutes(server, authHandler)
 
+	// 4. Initialize App General Logic
 	appHandler := api.NewAppHandler()
 	apiRoutes.RegisterAppRoutes(server, appHandler)
 
