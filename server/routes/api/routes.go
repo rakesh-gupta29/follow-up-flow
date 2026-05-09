@@ -25,3 +25,14 @@ func RegisterContactsRoutes(app fiber.Router, contactsHandler *api.ContactsHandl
 	apiGroup.Get("/contacts", contactsHandler.ListContacts)
 	apiGroup.Post("/disable", contactsHandler.DisableContact)
 }
+
+func RegisterCampaignRoutes(app fiber.Router, campaignsHandler *api.CampaignsHandler) {
+	apiGroup := app.Group("/api/v1")
+
+	apiGroup.Get("/campaigns", campaignsHandler.ListCampaigns)
+	apiGroup.Get("/campaigns/:id", campaignsHandler.GetCampaign)
+	apiGroup.Get("/campaigns/:id/contacts", campaignsHandler.ListCampaignContacts)
+	apiGroup.Post("/campaigns/:id/contacts", campaignsHandler.AttachContacts)
+	apiGroup.Post("/campaigns/:id/attach/:contactId", campaignsHandler.AttachContact)
+	apiGroup.Delete("/campaigns/:id/contacts/:contactId", campaignsHandler.RemoveContact)
+}

@@ -1,3 +1,4 @@
+import { TableCell } from "@/components/ui/table"
 import type { ReactNode } from "react"
 
 import type { Campaign } from "../../../types/campaign"
@@ -13,21 +14,37 @@ export const campaignColumns: CampaignColumn<Campaign>[] = [
   {
     id: "name",
     header: "Campaign",
-    cell: (campaign) => campaign.name,
+    cell: (campaign) => (
+      <TableCell key="name">
+        <span className="font-medium">{campaign.name}</span>
+      </TableCell>
+    ),
   },
   {
-    id: "status",
-    header: "Status",
-    cell: (campaign) => campaign.status,
+    id: "description",
+    header: "Description",
+    cell: (campaign) => (
+      <TableCell key="description">
+        <span className="text-muted-foreground">{campaign.description ?? "—"}</span>
+      </TableCell>
+    ),
   },
   {
-    id: "stages",
-    header: "Stages",
-    cell: (campaign) => campaign.stages.length,
+    id: "created_at",
+    header: "Created",
+    cell: (campaign) => (
+      <TableCell key="created_at">
+        {new Date(campaign.created_at).toLocaleDateString()}
+      </TableCell>
+    ),
   },
   {
-    id: "updated_at",
-    header: "Updated",
-    cell: (campaign) => new Date(campaign.updated_at).toLocaleDateString(),
+    id: "contacts_count",
+    header: "Contacts",
+    cell: (campaign) => (
+      <TableCell key="contacts_count">
+        {campaign.contacts_count ?? 0}
+      </TableCell>
+    ),
   },
 ]

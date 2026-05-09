@@ -25,9 +25,9 @@ export function ContactsPage() {
     status,
   })
 
-  console.log(data)
   const contacts = data?.items ?? []
-  const totalPages = data?.total_pages ?? 1
+  const currentPage = data?.pagination?.page ?? 1
+  const totalItems = data?.pagination.total ?? 1
 
   const allVisibleSelected = useMemo(
     () => contacts.length > 0 && contacts.every((contact) => selectedContactIds.includes(contact.id)),
@@ -56,22 +56,30 @@ export function ContactsPage() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Contacts</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="outline" onClick={handleSelectAll}>
-              {allVisibleSelected ? "Clear selection" : "Select all"}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => setDialogOpen(true)}
-              disabled={selectedContactIds.length === 0}
-            >
-              Add to campaign
-            </Button>
+        <CardHeader className="flex">
+          <div className="flex justify-between  w-full ">
+            <div>
+              <CardTitle>Contacts</CardTitle>
+              <p className="text-muted-foreground text-sm">
+                {isLoading ? "Loading contacts..." : `${totalItems} contacts`}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="outline" onClick={handleSelectAll}>
+                {allVisibleSelected ? "Clear selection" : "Select all"}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setDialogOpen(true)}
+                disabled={selectedContactIds.length === 0}
+              >
+                Add to campaign
+              </Button>
+            </div>
           </div>
+        </CardHeader>
+        <CardContent className="space-y-4 ">
+
 
           <div className="flex flex-wrap items-center gap-3">
             <Input
@@ -95,6 +103,16 @@ export function ContactsPage() {
               <option value="unsubscribed">Unsubscribed</option>
               <option value="bounced">Bounced</option>
             </Select>
+
+          </div>
+
+          <ContactsTable
+            contacts={contacts}
+            selectedContactIds={selectedContactIds}
+            onToggleContact={handleToggleContact}
+          />
+
+          <div className="flex items-center justify-end gap-6">
             <Select
               value={String(limit)}
               onChange={(event) => {
@@ -108,18 +126,6 @@ export function ContactsPage() {
                 </option>
               ))}
             </Select>
-          </div>
-
-          <ContactsTable
-            contacts={contacts}
-            selectedContactIds={selectedContactIds}
-            onToggleContact={handleToggleContact}
-          />
-
-          <div className="flex items-center justify-between">
-            <p className="text-muted-foreground text-sm">
-              {isLoading ? "Loading contacts..." : `${data?.total ?? 0} contacts`}
-            </p>
             <div className="flex items-center gap-2">
               <Button
                 type="button"
@@ -133,8 +139,8 @@ export function ContactsPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setPage((current) => Math.min(current + 1, totalPages))}
-                disabled={page >= totalPages}
+                onClick={() => setPage((current) => Math.min(current + 1, totalItems))}
+                disabled={page >= currentPage}
               >
                 Next
               </Button>

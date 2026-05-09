@@ -84,6 +84,7 @@ func (h *ContactsHandler) ListContacts(c fiber.Ctx) error {
 	}
 	search := c.Query("search", "")
 	status := c.Query("status", "")
+	campaignID := c.Query("campaignId", c.Query("campaign_id", ""))
 
 	if page < 1 {
 		page = 1
@@ -102,7 +103,7 @@ func (h *ContactsHandler) ListContacts(c fiber.Ctx) error {
 		status = normalizedStatus
 	}
 
-	contacts, total, err := h.repo.ListContacts(c.Context(), int64(page), int64(limit), search, status)
+	contacts, total, err := h.repo.ListContacts(c.Context(), int64(page), int64(limit), search, status, campaignID)
 	if err != nil {
 		return response.InternalError(c, "failed to fetch contacts")
 	}

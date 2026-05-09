@@ -130,3 +130,7 @@
     @apply font-sans;
   }
 }
+
+.d {
+  border: 1px solid red !important
+}

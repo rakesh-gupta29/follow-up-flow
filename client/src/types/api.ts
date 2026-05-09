@@ -5,8 +5,9 @@ export type ApiResponse<T> = {
 
 export type PaginatedResponse<T> = {
   items: T[]
-  page: number
-  limit: number
-  total: number
-  total_pages: number
+  pagination: {
+    page: number
+    limit: number
+    total: number
+  }
 }

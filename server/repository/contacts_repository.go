@@ -17,14 +17,16 @@ import (
 const appDatabaseName = "nudgebuddy_db"
 
 type ContactsRepository struct {
-	client     *mongo.Client
-	collection *mongo.Collection
+	client              *mongo.Client
+	collection          *mongo.Collection
+	campaignsCollection *mongo.Collection
 }
 
 func NewContactsRepository(db *mongo.Client) *ContactsRepository {
 	return &ContactsRepository{
-		client:     db,
-		collection: db.Database(appDatabaseName).Collection("contacts"),
+		client:              db,
+		collection:          db.Database(appDatabaseName).Collection("contacts"),
+		campaignsCollection: db.Database(appDatabaseName).Collection("campaigns"),
 	}
 }
 
@@ -57,6 +59,9 @@ func (r *ContactsRepository) EnsureCollection(ctx context.Context) error {
 		{
 			Keys: bson.D{{Key: "status", Value: 1}},
 		},
+		{
+			Keys: bson.D{{Key: "campaign_id", Value: 1}},
+		},
 	}
 
 	_, err = r.collection.Indexes().CreateMany(ctx, indexModels)
@@ -78,7 +83,7 @@ func (r *ContactsRepository) CreateContact(ctx context.Context, contact models.C
 	return &contact, nil
 }
 
-func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64, search string, status string) ([]models.ContactListItem, int64, error) {
+func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64, search string, status string, campaignID string) ([]models.ContactListItem, int64, error) {
 	filter := bson.M{}
 
 	if trimmedSearch := strings.TrimSpace(search); trimmedSearch != "" {
@@ -93,6 +98,9 @@ func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64
 
 	if normalizedStatus := normalizeStatus(models.ContactStatus(status)); normalizedStatus != "" {
 		filter["status"] = normalizedStatus
+	}
+	if strings.TrimSpace(campaignID) != "" {
+		filter["campaign_id"] = strings.TrimSpace(campaignID)
 	}
 
 	total, err := r.collection.CountDocuments(ctx, filter)
@@ -118,9 +126,24 @@ func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64
 			return nil, 0, err
 		}
 
+		var campaign *models.ContactCampaign
+		if strings.TrimSpace(contact.CampaignID) != "" {
+			var campaignDoc models.Campaign
+			err := r.campaignsCollection.FindOne(ctx, bson.M{"id": contact.CampaignID}).Decode(&campaignDoc)
+			if err != nil && err != mongo.ErrNoDocuments {
+				return nil, 0, err
+			}
+			if err == nil {
+				campaign = &models.ContactCampaign{
+					ID:   campaignDoc.ID,
+					Name: campaignDoc.Name,
+				}
+			}
+		}
+
 		contacts = append(contacts, models.ContactListItem{
 			Contact:  contact,
-			Campaign: nil,
+			Campaign: campaign,
 		})
 	}
 

@@ -57,6 +57,16 @@ func New() *Application {
 	contactsHandler := api.NewContactsHandler(contactsRepo)
 	apiRoutes.RegisterContactsRoutes(server, contactsHandler)
 
+	campaignsRepo := repository.NewCampaignsRepository(db.Client)
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	if err := campaignsRepo.EnsureCollection(ctx); err != nil {
+		cancel()
+		log.Fatalf("failed to initialize campaigns collection: %v", err)
+	}
+	cancel()
+	campaignsHandler := api.NewCampaignsHandler(campaignsRepo)
+	apiRoutes.RegisterCampaignRoutes(server, campaignsHandler)
+
 	// 4. Initialize App General Logic
 	appHandler := api.NewAppHandler()
 	apiRoutes.RegisterAppRoutes(server, appHandler)

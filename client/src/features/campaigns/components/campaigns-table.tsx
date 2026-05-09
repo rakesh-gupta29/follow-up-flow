@@ -1,8 +1,6 @@
-import { Badge } from "@/components/ui/badge"
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -13,18 +11,6 @@ import type { Campaign } from "../../../types/campaign"
 type CampaignsTableProps = {
   campaigns: Campaign[]
   onRowClick: (campaign: Campaign) => void
-}
-
-function getStatusVariant(status: Campaign["status"]) {
-  if (status === "active") {
-    return "default"
-  }
-
-  if (status === "paused") {
-    return "secondary"
-  }
-
-  return "outline"
 }
 
 export function CampaignsTable({ campaigns, onRowClick }: CampaignsTableProps) {
@@ -45,17 +31,7 @@ export function CampaignsTable({ campaigns, onRowClick }: CampaignsTableProps) {
               className="cursor-pointer"
               onClick={() => onRowClick(campaign)}
             >
-              {campaignColumns.map((column) => (
-                <TableCell key={column.id}>
-                  {column.id === "status" ? (
-                    <Badge variant={getStatusVariant(campaign.status)}>
-                      {column.cell(campaign)}
-                    </Badge>
-                  ) : (
-                    column.cell(campaign)
-                  )}
-                </TableCell>
-              ))}
+              {campaignColumns.map((column) => column.cell(campaign))}
             </TableRow>
           ))}
         </TableBody>
