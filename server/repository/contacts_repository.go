@@ -65,6 +65,9 @@ func (r *ContactsRepository) EnsureCollection(ctx context.Context) error {
 		{
 			Keys: bson.D{{Key: "campaign_ids", Value: 1}},
 		},
+		{
+			Keys: bson.D{{Key: "campaign_memberships.campaign_id", Value: 1}},
+		},
 	}
 
 	_, err = r.collection.Indexes().CreateMany(ctx, indexModels)
@@ -109,6 +112,7 @@ func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64
 				"$or": []bson.M{
 					{"campaign_id": trimmedCampaignID},
 					{"campaign_ids": trimmedCampaignID},
+					{"campaign_memberships.campaign_id": trimmedCampaignID},
 				},
 			},
 		}
@@ -137,18 +141,31 @@ func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64
 			return nil, 0, err
 		}
 
-		campaignIDs := normalizeCampaignIDs(contact)
-		campaigns := make([]models.ContactCampaign, 0, len(campaignIDs))
-		for _, campaignID := range campaignIDs {
+		memberships := normalizeCampaignMemberships(contact)
+		for index := range memberships {
 			var campaignDoc models.Campaign
-			err := r.campaignsCollection.FindOne(ctx, bson.M{"id": campaignID}).Decode(&campaignDoc)
+			err := r.campaignsCollection.FindOne(ctx, bson.M{"id": memberships[index].CampaignID}).Decode(&campaignDoc)
+			if err != nil && err != mongo.ErrNoDocuments {
+				return nil, 0, err
+			}
+			if err == nil {
+				memberships[index].Campaign = &campaignDoc
+			}
+		}
+		contact.CampaignMemberships = memberships
+
+		campaigns := make([]models.ContactCampaign, 0, len(memberships))
+		for _, membership := range memberships {
+			var campaignDoc models.Campaign
+			err := r.campaignsCollection.FindOne(ctx, bson.M{"id": membership.CampaignID}).Decode(&campaignDoc)
 			if err != nil && err != mongo.ErrNoDocuments {
 				return nil, 0, err
 			}
 			if err == nil {
 				campaigns = append(campaigns, models.ContactCampaign{
-					ID:   campaignDoc.ID,
-					Name: campaignDoc.Name,
+					ID:     campaignDoc.ID,
+					Name:   campaignDoc.Name,
+					Status: membership.Status,
 				})
 			}
 		}
@@ -216,7 +233,7 @@ func IsDuplicateKeyError(err error) bool {
 }
 
 func normalizeCampaignIDs(contact models.Contact) []string {
-	ids := make([]string, 0, len(contact.CampaignIDs)+1)
+	ids := make([]string, 0, len(contact.CampaignIDs)+len(contact.CampaignMemberships)+1)
 	seen := map[string]bool{}
 
 	if trimmed := strings.TrimSpace(contact.CampaignID); trimmed != "" {
@@ -233,5 +250,79 @@ func normalizeCampaignIDs(contact models.Contact) []string {
 		seen[trimmed] = true
 	}
 
+	for _, membership := range contact.CampaignMemberships {
+		trimmed := strings.TrimSpace(membership.CampaignID)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		ids = append(ids, trimmed)
+		seen[trimmed] = true
+	}
+
 	return ids
+}
+
+func normalizeCampaignMembershipStatus(status models.CampaignContactStatus) models.CampaignContactStatus {
+	switch strings.ToLower(string(status)) {
+	case string(models.CampaignContactStatusQueued):
+		return models.CampaignContactStatusQueued
+	case string(models.CampaignContactStatusInProgress):
+		return models.CampaignContactStatusInProgress
+	case string(models.CampaignContactStatusSuccess):
+		return models.CampaignContactStatusSuccess
+	case string(models.CampaignContactStatusFailed):
+		return models.CampaignContactStatusFailed
+	default:
+		return models.CampaignContactStatusQueued
+	}
+}
+
+func normalizeCampaignMemberships(contact models.Contact) []models.ContactCampaignMembership {
+	now := contact.UpdatedAt
+	if strings.TrimSpace(now) == "" {
+		now = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	memberships := make([]models.ContactCampaignMembership, 0, len(contact.CampaignMemberships)+len(contact.CampaignIDs)+1)
+	seen := map[string]bool{}
+
+	for _, membership := range contact.CampaignMemberships {
+		trimmed := strings.TrimSpace(membership.CampaignID)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+
+		normalizedMembership := membership
+		normalizedMembership.CampaignID = trimmed
+		normalizedMembership.Status = normalizeCampaignMembershipStatus(normalizedMembership.Status)
+		if strings.TrimSpace(normalizedMembership.CreatedAt) == "" {
+			normalizedMembership.CreatedAt = now
+		}
+		if strings.TrimSpace(normalizedMembership.UpdatedAt) == "" {
+			normalizedMembership.UpdatedAt = normalizedMembership.CreatedAt
+		}
+
+		memberships = append(memberships, normalizedMembership)
+		seen[trimmed] = true
+	}
+
+	legacyCampaignIDs := normalizeCampaignIDs(models.Contact{
+		CampaignID:  contact.CampaignID,
+		CampaignIDs: contact.CampaignIDs,
+	})
+	for _, campaignID := range legacyCampaignIDs {
+		if seen[campaignID] {
+			continue
+		}
+
+		memberships = append(memberships, models.ContactCampaignMembership{
+			CampaignID: campaignID,
+			Status:     models.CampaignContactStatusQueued,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		})
+		seen[campaignID] = true
+	}
+
+	return memberships
 }

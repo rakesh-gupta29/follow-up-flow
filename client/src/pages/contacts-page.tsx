@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +13,7 @@ import type { ContactStatus } from "../types/contact"
 const limits = [25, 50, 100]
 
 export function ContactsPage() {
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(25)
   const [search, setSearch] = useState("")
@@ -65,6 +67,9 @@ export function ContactsPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" onClick={() => navigate("/contacts/add")}>
+                Add contacts
+              </Button>
               <Button type="button" variant="outline" onClick={handleSelectAll}>
                 {allVisibleSelected ? "Clear selection" : "Select all"}
               </Button>
@@ -110,6 +115,7 @@ export function ContactsPage() {
             contacts={contacts}
             selectedContactIds={selectedContactIds}
             onToggleContact={handleToggleContact}
+            variant="campaign"
           />
 
           <div className="flex items-center justify-end gap-6">

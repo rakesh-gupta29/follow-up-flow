@@ -16,13 +16,16 @@ export type ContactsQueryParams = {
 }
 
 export async function getContacts(params: ContactsQueryParams) {
-  const response = await apiClient.get<ApiResponse<PaginatedResponse<ContactListItem>>>("/api/v1/contacts", {
+  const endpoint = params.campaignId
+    ? `/api/v1/campaigns/${params.campaignId}/contacts`
+    : "/api/v1/contacts"
+
+  const response = await apiClient.get<ApiResponse<PaginatedResponse<ContactListItem>>>(endpoint, {
     params: {
       page: params.page,
       limit: params.limit,
       search: params.search || undefined,
       status: params.status,
-      campaignId: params.campaignId,
     },
   })
   return response.data.data

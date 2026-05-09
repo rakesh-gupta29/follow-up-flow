@@ -91,6 +91,7 @@ export function CampaignContactsPage() {
             contacts={contacts}
             selectedContactIds={selectedContactIds}
             onToggleContact={handleToggleContact}
+            variant="campaign"
           />
         )}
         {removeContactsMutation.isError ? (

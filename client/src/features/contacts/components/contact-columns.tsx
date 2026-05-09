@@ -34,3 +34,31 @@ export const contactColumns: ContactColumn<ContactListItem>[] = [
     cell: (contact) => contact.status,
   },
 ]
+
+export const campaignContactColumns: ContactColumn<ContactListItem>[] = [
+  {
+    id: "name",
+    header: "Person",
+    cell: (contact) => `${contact.first_name} ${contact.last_name}`.trim() || contact.email,
+  },
+  {
+    id: "company",
+    header: "Company",
+    cell: (contact) => contact.company || "No company",
+  },
+  {
+    id: "current-campaign",
+    header: "Current campaign",
+    cell: (contact) => contact.campaign?.name || "Unassigned",
+  },
+  {
+    id: "current-state",
+    header: "Current state",
+    cell: (contact) => contact.campaign?.status || "Unknown",
+  },
+  {
+    id: "logs",
+    header: "Logs",
+    cell: () => "View logs",
+  },
+]

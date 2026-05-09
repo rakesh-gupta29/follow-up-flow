@@ -32,7 +32,9 @@ func RegisterCampaignRoutes(app fiber.Router, campaignsHandler *api.CampaignsHan
 	apiGroup.Get("/campaigns", campaignsHandler.ListCampaigns)
 	apiGroup.Get("/campaigns/:id", campaignsHandler.GetCampaign)
 	apiGroup.Get("/campaigns/:id/contacts", campaignsHandler.ListCampaignContacts)
+	apiGroup.Get("/handover/:id", campaignsHandler.Handover)
 	apiGroup.Post("/campaigns/:id/contacts", campaignsHandler.AttachContacts)
 	apiGroup.Post("/campaigns/:id/attach/:contactId", campaignsHandler.AttachContact)
+	apiGroup.Patch("/campaigns/:id/contacts/:contactId/status", campaignsHandler.UpdateContactStatus)
 	apiGroup.Delete("/campaigns/:id/contacts/:contactId", campaignsHandler.RemoveContact)
 }

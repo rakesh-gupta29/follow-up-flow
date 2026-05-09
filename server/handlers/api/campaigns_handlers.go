@@ -163,3 +163,58 @@ func (h *CampaignsHandler) RemoveContact(c fiber.Ctx) error {
 
 	return response.Send(c, contact)
 }
+
+func (h *CampaignsHandler) UpdateContactStatus(c fiber.Ctx) error {
+	campaignID := strings.TrimSpace(c.Params("id"))
+	contactID := strings.TrimSpace(c.Params("contactId"))
+
+	if campaignID == "" || contactID == "" {
+		return response.BadRequest(c, "campaign id and contact id are required")
+	}
+
+	var input struct {
+		Status         string `json:"status"`
+		NextCampaignID string `json:"next_campaign_id"`
+	}
+
+	if err := c.Bind().Body(&input); err != nil {
+		return response.BadRequest(c, "Invalid input")
+	}
+
+	status := models.CampaignContactStatus(strings.TrimSpace(input.Status))
+	if status != models.CampaignContactStatusQueued &&
+		status != models.CampaignContactStatusInProgress &&
+		status != models.CampaignContactStatusSuccess &&
+		status != models.CampaignContactStatusFailed {
+		return response.BadRequest(c, "status must be one of queued, in_progress, success or failed")
+	}
+
+	contact, err := h.repo.UpdateCampaignContactStatus(c.Context(), campaignID, contactID, status, strings.TrimSpace(input.NextCampaignID))
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return response.NotFound(c, "campaign contact not found")
+		}
+
+		return response.InternalError(c, "failed to update campaign contact status")
+	}
+
+	return response.Send(c, contact)
+}
+
+func (h *CampaignsHandler) Handover(c fiber.Ctx) error {
+	campaignID := strings.TrimSpace(c.Params("id"))
+	if campaignID == "" {
+		return response.BadRequest(c, "campaign id is required")
+	}
+
+	contacts, err := h.repo.GetQueuedCampaignContacts(c.Context(), campaignID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return response.NotFound(c, "campaign not found")
+		}
+
+		return response.InternalError(c, "failed to fetch queued contacts")
+	}
+
+	return response.Send(c, contacts)
+}

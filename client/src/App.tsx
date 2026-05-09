@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 
 import { AuthGuard } from "./auth-guard"
 import { AppLayout } from "./layouts/app-layout"
+import { AddContactsPage } from "./pages/add-contacts-page"
 import { CampaignContactsPage } from "./pages/campaign-contacts-page"
 import { CampaignsPage } from "./pages/campaigns-page"
 import { ContactsPage } from "./pages/contacts-page"
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/campaigns" element={<CampaignsPage />} />
           <Route path="/campaigns/:campaignId/contacts" element={<CampaignContactsPage />} />
           <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/contacts/add" element={<AddContactsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
       </Routes>

@@ -63,6 +63,9 @@ func (r *CampaignsRepository) EnsureCollection(ctx context.Context) error {
 		{
 			Keys: bson.D{{Key: "campaign_ids", Value: 1}},
 		},
+		{
+			Keys: bson.D{{Key: "campaign_memberships.campaign_id", Value: 1}},
+		},
 	})
 	if err != nil {
 		return err
@@ -87,6 +90,7 @@ func (r *CampaignsRepository) seedDefaultCampaigns(ctx context.Context) error {
 			ID:          uuid.NewString(),
 			Name:        "Welcome Campaign",
 			Description: "Default onboarding campaign",
+			Stage:       1,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		},
@@ -94,6 +98,7 @@ func (r *CampaignsRepository) seedDefaultCampaigns(ctx context.Context) error {
 			ID:          uuid.NewString(),
 			Name:        "Re-Engagement Campaign",
 			Description: "Default re-engagement campaign",
+			Stage:       2,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		},
@@ -101,6 +106,7 @@ func (r *CampaignsRepository) seedDefaultCampaigns(ctx context.Context) error {
 			ID:          uuid.NewString(),
 			Name:        "Product Update Campaign",
 			Description: "Default product update campaign",
+			Stage:       3,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		},
@@ -111,7 +117,10 @@ func (r *CampaignsRepository) seedDefaultCampaigns(ctx context.Context) error {
 }
 
 func (r *CampaignsRepository) ListCampaigns(ctx context.Context) ([]models.CampaignListItem, error) {
-	cursor, err := r.campaignsCollection.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}))
+	cursor, err := r.campaignsCollection.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{
+		{Key: "stage", Value: 1},
+		{Key: "created_at", Value: -1},
+	}))
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +137,7 @@ func (r *CampaignsRepository) ListCampaigns(ctx context.Context) ([]models.Campa
 			"$or": []bson.M{
 				{"campaign_id": campaign.ID},
 				{"campaign_ids": campaign.ID},
+				{"campaign_memberships.campaign_id": campaign.ID},
 			},
 		})
 		if err != nil {
@@ -165,6 +175,7 @@ func (r *CampaignsRepository) ListCampaignContacts(ctx context.Context, campaign
 				"$or": []bson.M{
 					{"campaign_id": campaignID},
 					{"campaign_ids": campaignID},
+					{"campaign_memberships.campaign_id": campaignID},
 				},
 			},
 		},
@@ -207,16 +218,22 @@ func (r *CampaignsRepository) ListCampaignContacts(ctx context.Context, campaign
 			return nil, 0, err
 		}
 
+		if err := r.enrichContactCampaignMemberships(ctx, &contact); err != nil {
+			return nil, 0, err
+		}
+
 		contacts = append(contacts, models.ContactListItem{
 			Contact: contact,
 			Campaign: &models.ContactCampaign{
-				ID:   campaign.ID,
-				Name: campaign.Name,
+				ID:     campaign.ID,
+				Name:   campaign.Name,
+				Status: findCampaignStatus(contact, campaign.ID),
 			},
 			Campaigns: []models.ContactCampaign{
 				{
-					ID:   campaign.ID,
-					Name: campaign.Name,
+					ID:     campaign.ID,
+					Name:   campaign.Name,
+					Status: findCampaignStatus(contact, campaign.ID),
 				},
 			},
 		})
@@ -234,31 +251,18 @@ func (r *CampaignsRepository) AttachContact(ctx context.Context, campaignID, con
 		return nil, err
 	}
 
-	update := bson.M{
-		"$addToSet": bson.M{
-			"campaign_ids": campaignID,
-		},
-		"$set": bson.M{
-			"updated_at": time.Now().UTC().Format(time.RFC3339),
-		},
-	}
-
-	result := r.contactsCollection.FindOneAndUpdate(
-		ctx,
-		bson.M{"id": contactID},
-		update,
-		options.FindOneAndUpdate().SetReturnDocument(options.After),
-	)
-	if result.Err() != nil {
-		return nil, result.Err()
-	}
-
-	var contact models.Contact
-	if err := result.Decode(&contact); err != nil {
+	contact, err := r.getContact(ctx, contactID)
+	if err != nil {
 		return nil, err
 	}
 
-	return &contact, nil
+	updatedContact, _, err := r.ensureCampaignQueued(ctx, contact, campaignID)
+	if err == nil && updatedContact != nil {
+		if enrichErr := r.enrichContactCampaignMemberships(ctx, updatedContact); enrichErr != nil {
+			return nil, enrichErr
+		}
+	}
+	return updatedContact, err
 }
 
 func (r *CampaignsRepository) AttachContacts(ctx context.Context, campaignID string, contactIDs []string) (int64, error) {
@@ -281,23 +285,23 @@ func (r *CampaignsRepository) AttachContacts(ctx context.Context, campaignID str
 		return 0, nil
 	}
 
-	result, err := r.contactsCollection.UpdateMany(
-		ctx,
-		bson.M{"id": bson.M{"$in": trimmedIDs}},
-		bson.M{
-			"$addToSet": bson.M{
-				"campaign_ids": bson.M{"$each": trimmedIDsToCampaigns(campaignID)},
-			},
-			"$set": bson.M{
-				"updated_at": time.Now().UTC().Format(time.RFC3339),
-			},
-		},
-	)
-	if err != nil {
-		return 0, err
+	var modifiedCount int64
+	for _, contactID := range trimmedIDs {
+		contact, err := r.getContact(ctx, contactID)
+		if err != nil {
+			return modifiedCount, err
+		}
+
+		_, attached, err := r.ensureCampaignQueued(ctx, contact, campaignID)
+		if err != nil {
+			return modifiedCount, err
+		}
+		if attached {
+			modifiedCount++
+		}
 	}
 
-	return result.ModifiedCount, nil
+	return modifiedCount, nil
 }
 
 func (r *CampaignsRepository) RemoveContact(ctx context.Context, campaignID, contactID string) (*models.Contact, error) {
@@ -305,44 +309,304 @@ func (r *CampaignsRepository) RemoveContact(ctx context.Context, campaignID, con
 		return nil, err
 	}
 
-	result := r.contactsCollection.FindOneAndUpdate(
-		ctx,
-		bson.M{
-			"id": contactID,
-			"$or": []bson.M{
-				{"campaign_id": campaignID},
-				{"campaign_ids": campaignID},
-			},
-		},
-		bson.M{
-			"$set": bson.M{
-				"updated_at": time.Now().UTC().Format(time.RFC3339),
-			},
-			"$pull": bson.M{
-				"campaign_ids": campaignID,
-			},
-			"$unset": bson.M{
-				"campaign_id": "",
-			},
-		},
-		options.FindOneAndUpdate().SetReturnDocument(options.After),
-	)
-	if result.Err() != nil {
-		return nil, result.Err()
+	contact, err := r.getContact(ctx, contactID)
+	if err != nil {
+		return nil, err
 	}
 
+	memberships := normalizeCampaignMemberships(*contact)
+	index := findCampaignMembershipIndex(memberships, campaignID)
+	if index == -1 {
+		return nil, mongo.ErrNoDocuments
+	}
+
+	status := memberships[index].Status
+	memberships = append(memberships[:index], memberships[index+1:]...)
+
+	contact.CampaignMemberships = memberships
+	contact.CampaignIDs = campaignIDsFromMemberships(memberships)
+	if len(contact.CampaignIDs) > 0 {
+		contact.CampaignID = contact.CampaignIDs[0]
+	} else {
+		contact.CampaignID = ""
+	}
+	contact.CampaignLogs = append(contact.CampaignLogs, models.ContactCampaignLog{
+		CampaignID: campaignID,
+		Status:     status,
+		Action:     "removed",
+		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+	})
+
+	if err := r.saveCampaignState(ctx, contact); err != nil {
+		return nil, err
+	}
+
+	if err := r.enrichContactCampaignMemberships(ctx, contact); err != nil {
+		return nil, err
+	}
+
+	return contact, nil
+}
+
+func (r *CampaignsRepository) UpdateCampaignContactStatus(ctx context.Context, campaignID, contactID string, status models.CampaignContactStatus, nextCampaignID string) (*models.Contact, error) {
+	if _, err := r.GetCampaign(ctx, campaignID); err != nil {
+		return nil, err
+	}
+
+	if trimmedNextCampaignID := strings.TrimSpace(nextCampaignID); trimmedNextCampaignID != "" {
+		if _, err := r.GetCampaign(ctx, trimmedNextCampaignID); err != nil {
+			return nil, err
+		}
+		nextCampaignID = trimmedNextCampaignID
+	}
+
+	contact, err := r.getContact(ctx, contactID)
+	if err != nil {
+		return nil, err
+	}
+
+	memberships := normalizeCampaignMemberships(*contact)
+	index := findCampaignMembershipIndex(memberships, campaignID)
+	if index == -1 {
+		return nil, mongo.ErrNoDocuments
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	memberships[index].Status = normalizeCampaignMembershipStatus(status)
+	memberships[index].UpdatedAt = now
+	contact.CampaignLogs = append(contact.CampaignLogs, models.ContactCampaignLog{
+		CampaignID: campaignID,
+		Status:     memberships[index].Status,
+		Action:     "status_updated",
+		CreatedAt:  now,
+	})
+
+	if nextCampaignID != "" {
+		nextIndex := findCampaignMembershipIndex(memberships, nextCampaignID)
+		if nextCampaignID != campaignID && nextIndex == -1 {
+			memberships = append(memberships, models.ContactCampaignMembership{
+				CampaignID: nextCampaignID,
+				Status:     models.CampaignContactStatusQueued,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			})
+			contact.CampaignLogs = append(contact.CampaignLogs, models.ContactCampaignLog{
+				CampaignID: nextCampaignID,
+				Status:     models.CampaignContactStatusQueued,
+				Action:     "queued_next_campaign",
+				CreatedAt:  now,
+			})
+		}
+	}
+
+	contact.CampaignMemberships = memberships
+	contact.CampaignIDs = campaignIDsFromMemberships(memberships)
+	if len(contact.CampaignIDs) > 0 {
+		contact.CampaignID = contact.CampaignIDs[0]
+	}
+	contact.UpdatedAt = now
+
+	if err := r.saveCampaignState(ctx, contact); err != nil {
+		return nil, err
+	}
+
+	if err := r.enrichContactCampaignMemberships(ctx, contact); err != nil {
+		return nil, err
+	}
+
+	return contact, nil
+}
+
+func (r *CampaignsRepository) GetQueuedCampaignContacts(ctx context.Context, campaignID string) ([]models.ContactListItem, error) {
+	campaign, err := r.GetCampaign(ctx, campaignID)
+	if err != nil {
+		return nil, err
+	}
+
+	filter := bson.M{
+		"$or": []bson.M{
+			bson.M{
+				"campaign_memberships": bson.M{
+					"$elemMatch": bson.M{
+						"campaign_id": campaignID,
+						"status":      models.CampaignContactStatusQueued,
+					},
+				},
+			},
+			bson.M{
+				"$and": []bson.M{
+					{
+						"$or": []bson.M{
+							{"campaign_id": campaignID},
+							{"campaign_ids": campaignID},
+						},
+					},
+					{"campaign_memberships": bson.M{"$exists": false}},
+				},
+			},
+		},
+	}
+
+	cursor, err := r.contactsCollection.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}))
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	contacts := make([]models.ContactListItem, 0)
+	for cursor.Next(ctx) {
+		var contact models.Contact
+		if err := cursor.Decode(&contact); err != nil {
+			return nil, err
+		}
+
+		if err := r.enrichContactCampaignMemberships(ctx, &contact); err != nil {
+			return nil, err
+		}
+
+		status := findCampaignStatus(contact, campaignID)
+		if status != models.CampaignContactStatusQueued {
+			continue
+		}
+
+		contacts = append(contacts, models.ContactListItem{
+			Contact: contact,
+			Campaign: &models.ContactCampaign{
+				ID:     campaign.ID,
+				Name:   campaign.Name,
+				Status: status,
+			},
+			Campaigns: []models.ContactCampaign{
+				{
+					ID:     campaign.ID,
+					Name:   campaign.Name,
+					Status: status,
+				},
+			},
+		})
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+
+	return contacts, nil
+}
+
+func (r *CampaignsRepository) getContact(ctx context.Context, contactID string) (*models.Contact, error) {
 	var contact models.Contact
-	if err := result.Decode(&contact); err != nil {
+	err := r.contactsCollection.FindOne(ctx, bson.M{"id": contactID}).Decode(&contact)
+	if err != nil {
 		return nil, err
 	}
 
 	return &contact, nil
 }
 
-func trimmedIDsToCampaigns(campaignID string) []string {
-	if strings.TrimSpace(campaignID) == "" {
-		return []string{}
+func (r *CampaignsRepository) ensureCampaignQueued(ctx context.Context, contact *models.Contact, campaignID string) (*models.Contact, bool, error) {
+	memberships := normalizeCampaignMemberships(*contact)
+	now := time.Now().UTC().Format(time.RFC3339)
+	action := "attached"
+	status := models.CampaignContactStatusQueued
+
+	if index := findCampaignMembershipIndex(memberships, campaignID); index != -1 {
+		memberships[index].Status = status
+		if strings.TrimSpace(memberships[index].CreatedAt) == "" {
+			memberships[index].CreatedAt = now
+		}
+		memberships[index].UpdatedAt = now
+		action = "requeued"
+	} else {
+		memberships = append(memberships, models.ContactCampaignMembership{
+			CampaignID: campaignID,
+			Status:     status,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		})
 	}
 
-	return []string{strings.TrimSpace(campaignID)}
+	contact.CampaignMemberships = memberships
+	contact.CampaignIDs = campaignIDsFromMemberships(memberships)
+	if len(contact.CampaignIDs) > 0 {
+		contact.CampaignID = contact.CampaignIDs[0]
+	}
+	contact.CampaignLogs = append(contact.CampaignLogs, models.ContactCampaignLog{
+		CampaignID: campaignID,
+		Status:     status,
+		Action:     action,
+		CreatedAt:  now,
+	})
+	contact.UpdatedAt = now
+
+	if err := r.saveCampaignState(ctx, contact); err != nil {
+		return nil, false, err
+	}
+
+	if err := r.enrichContactCampaignMemberships(ctx, contact); err != nil {
+		return nil, false, err
+	}
+
+	return contact, true, nil
+}
+
+func (r *CampaignsRepository) saveCampaignState(ctx context.Context, contact *models.Contact) error {
+	_, err := r.contactsCollection.UpdateOne(ctx, bson.M{"id": contact.ID}, bson.M{
+		"$set": bson.M{
+			"campaign_id":          contact.CampaignID,
+			"campaign_ids":         contact.CampaignIDs,
+			"campaign_memberships": contact.CampaignMemberships,
+			"campaign_logs":        contact.CampaignLogs,
+			"updated_at":           contact.UpdatedAt,
+		},
+	})
+	return err
+}
+
+func findCampaignMembershipIndex(memberships []models.ContactCampaignMembership, campaignID string) int {
+	for index, membership := range memberships {
+		if membership.CampaignID == campaignID {
+			return index
+		}
+	}
+
+	return -1
+}
+
+func campaignIDsFromMemberships(memberships []models.ContactCampaignMembership) []string {
+	ids := make([]string, 0, len(memberships))
+	for _, membership := range memberships {
+		if trimmed := strings.TrimSpace(membership.CampaignID); trimmed != "" {
+			ids = append(ids, trimmed)
+		}
+	}
+
+	return ids
+}
+
+func findCampaignStatus(contact models.Contact, campaignID string) models.CampaignContactStatus {
+	memberships := normalizeCampaignMemberships(contact)
+	for _, membership := range memberships {
+		if membership.CampaignID == campaignID {
+			return membership.Status
+		}
+	}
+
+	return models.CampaignContactStatusQueued
+}
+
+func (r *CampaignsRepository) enrichContactCampaignMemberships(ctx context.Context, contact *models.Contact) error {
+	memberships := normalizeCampaignMemberships(*contact)
+	for index := range memberships {
+		var campaignDoc models.Campaign
+		err := r.campaignsCollection.FindOne(ctx, bson.M{"id": memberships[index].CampaignID}).Decode(&campaignDoc)
+		if err != nil && err != mongo.ErrNoDocuments {
+			return err
+		}
+		if err == nil {
+			memberships[index].Campaign = &campaignDoc
+		}
+	}
+
+	contact.CampaignMemberships = memberships
+	return nil
 }
