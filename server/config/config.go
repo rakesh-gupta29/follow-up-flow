@@ -44,15 +44,15 @@ func init() {
 }
 
 func (c *Config) DatabaseURL() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s", c.DBUser, c.DBPassword, c.DBHost, c.DBPort, c.DBName)
+	return fmt.Sprintf("mongodb://%s:%s", c.DBHost, c.DBPort)
 }
 
 func getEnv(key string) string {
 	val := os.Getenv(key)
 
-	if val == "" {
-		log.Fatalf("missing env var %s in env file", key)
-	}
+	// if val == "" {
+	// 	log.Fatalf("missing env var %s in env file", key)
+	// }
 
 	return val
 }

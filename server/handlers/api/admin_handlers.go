@@ -2,10 +2,11 @@
 package api
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/shingo/server/repository"
 	"github.com/shingo/server/utils/response"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type AuthHandler struct {
@@ -26,18 +27,32 @@ func (h *AuthHandler) Login(c fiber.Ctx) error {
 		return response.BadRequest(c, "Invalid input")
 	}
 
-	user, err := h.repo.FindByEmail(c.Context(), input.Email)
+	user, err := h.repo.GetAdmin(c.Context(), input.Email)
+	fmt.Println("admin foiudn", user)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return response.NotFound(c, "User not found")
-		}
-		return response.InternalError(c, "Database error")
+		return response.BadRequest(c, "Unauthorized: Invalid credentials")
 	}
-
-	// Simple password check (In production, use bcrypt.CompareHashAndPassword)
 	if user.Password != input.Password {
-		return response.BadRequest(c, "Incorrect password")
+		fmt.Println("invalid password", user.Password, input.Password)
+		return response.BadRequest(c, "Unauthorized: Invalid credentials")
 	}
 
-	return response.Send(c, fiber.Map{"message": "Login successful", "email": user.Email})
+	// Simple Token for NudgeBuddy
+	return response.Send(c, fiber.Map{
+		"access_token": "nudgebuddy_secret_token_123",
+		"user":         user.Email,
+	})
+}
+
+func (h *AuthHandler) Me(c fiber.Ctx) error {
+	token := c.Get("Authorization")
+
+	if token != "Bearer nudgebuddy_secret_token_123" {
+		return response.BadRequest(c, "Invalid or expired token")
+	}
+
+	return response.Send(c, fiber.Map{
+		"email": "admin",
+		"role":  "owner",
+	})
 }

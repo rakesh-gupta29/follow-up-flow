@@ -1,38 +1,26 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthGuard } from "./auth-guard";
-import { Button } from "@/components/ui/button";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 
-// A dummy Dashboard
-const Dashboard = () => (
-  <div className="p-8">
-    <h1 className="text-2xl font-bold italic text-primary">NudgeBuddy Dashboard</h1>
-    <Button className="mt-4">Start Outreach</Button>
-  </div>
-);
-
-// A dummy Login Page
-const LoginPage = () => (
-  <div className="flex h-screen items-center justify-center">
-    <Button variant="outline">Login with Google</Button>
-  </div>
-);
+import { AuthGuard } from "./auth-guard"
+import { AppLayout } from "./layouts/app-layout"
+import { CampaignContactsPage } from "./pages/campaign-contacts-page"
+import { CampaignsPage } from "./pages/campaigns-page"
+import { ContactsPage } from "./pages/contacts-page"
+import { LoginPage } from "./pages/login-page"
+import { ProfilePage } from "./pages/profile-page"
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-
-        {/* Protect this route */}
-        <Route
-          path="/"
-          element={
-            <AuthGuard>
-              <Dashboard />
-            </AuthGuard>
-          }
-        />
+        <Route element={<AuthGuard><AppLayout /></AuthGuard>}>
+          <Route path="/" element={<Navigate to="/campaigns" replace />} />
+          <Route path="/campaigns" element={<CampaignsPage />} />
+          <Route path="/campaigns/:campaignId/contacts" element={<CampaignContactsPage />} />
+          <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+        </Route>
       </Routes>
     </BrowserRouter>
-  );
+  )
 }

@@ -1,51 +1,34 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import type { ReactNode } from "react"
+import { Navigate, useLocation } from "react-router-dom"
 
-interface AuthGuardProps {
-    children: React.ReactNode;
+import { useCurrentUserQuery } from "@/lib/auth"
+import { clearAccessToken, getAccessToken } from "./lib/access-token"
+
+type AuthGuardProps = {
+  children: ReactNode
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-    const navigate = useNavigate();
+  const location = useLocation()
+  const token = getAccessToken()
+  const { data, isLoading, isError } = useCurrentUserQuery(true)
 
-    useEffect(() => {
-        const checkAuth = async () => {
-            try {
-                // Replace this URL with your actual API endpoint
-                const response = await fetch("/api/login", {
-                    method: "GET", // Or POST depending on your backend setup
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                });
+  if (!token) {
+    return <Navigate to="/login" replace state={{ from: location }} />
+  }
 
-                if (response.ok) {
-                    setIsAuthenticated(true);
-                } else {
-                    setIsAuthenticated(false);
-                    navigate("/login"); // Redirect to login page if unauthorized
-                }
-            } catch (error) {
-                console.error("Auth check failed:", error);
-                setIsAuthenticated(false);
-                navigate("/login");
-            }
-        };
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground text-sm">Authenticating...</p>
+      </div>
+    )
+  }
 
-        checkAuth();
-    }, [navigate]);
+  if (isError || !data) {
+    clearAccessToken()
+    return <Navigate to="/login" replace state={{ from: location }} />
+  }
 
-    // While checking, show a loading state (or a nice shadcn spinner!)
-    if (isAuthenticated === null) {
-        return (
-            <div className="flex h-screen w-screen items-center justify-center">
-                <p className="text-sm text-muted-foreground animate-pulse">
-                    Authenticating...
-                </p>
-            </div>
-        );
-    }
-
-    return isAuthenticated ? <>{children}</> : null;
+  return <>{children}</>
 }
