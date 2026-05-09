@@ -60,6 +60,9 @@ func (r *CampaignsRepository) EnsureCollection(ctx context.Context) error {
 		{
 			Keys: bson.D{{Key: "campaign_id", Value: 1}},
 		},
+		{
+			Keys: bson.D{{Key: "campaign_ids", Value: 1}},
+		},
 	})
 	if err != nil {
 		return err
@@ -121,7 +124,12 @@ func (r *CampaignsRepository) ListCampaigns(ctx context.Context) ([]models.Campa
 			return nil, err
 		}
 
-		contactsCount, err := r.contactsCollection.CountDocuments(ctx, bson.M{"campaign_id": campaign.ID})
+		contactsCount, err := r.contactsCollection.CountDocuments(ctx, bson.M{
+			"$or": []bson.M{
+				{"campaign_id": campaign.ID},
+				{"campaign_ids": campaign.ID},
+			},
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -151,16 +159,27 @@ func (r *CampaignsRepository) ListCampaignContacts(ctx context.Context, campaign
 		return nil, 0, err
 	}
 
-	filter := bson.M{"campaign_id": campaignID}
+	filter := bson.M{
+		"$and": []bson.M{
+			{
+				"$or": []bson.M{
+					{"campaign_id": campaignID},
+					{"campaign_ids": campaignID},
+				},
+			},
+		},
+	}
 
 	if trimmedSearch := strings.TrimSpace(search); trimmedSearch != "" {
 		pattern := regexp.QuoteMeta(trimmedSearch)
-		filter["$or"] = []bson.M{
-			{"email": bson.M{"$regex": pattern, "$options": "i"}},
-			{"first_name": bson.M{"$regex": pattern, "$options": "i"}},
-			{"last_name": bson.M{"$regex": pattern, "$options": "i"}},
-			{"company": bson.M{"$regex": pattern, "$options": "i"}},
-		}
+		filter["$and"] = append(filter["$and"].([]bson.M), bson.M{
+			"$or": []bson.M{
+				{"email": bson.M{"$regex": pattern, "$options": "i"}},
+				{"first_name": bson.M{"$regex": pattern, "$options": "i"}},
+				{"last_name": bson.M{"$regex": pattern, "$options": "i"}},
+				{"company": bson.M{"$regex": pattern, "$options": "i"}},
+			},
+		})
 	}
 
 	if normalizedStatus := normalizeStatus(models.ContactStatus(status)); normalizedStatus != "" {
@@ -194,6 +213,12 @@ func (r *CampaignsRepository) ListCampaignContacts(ctx context.Context, campaign
 				ID:   campaign.ID,
 				Name: campaign.Name,
 			},
+			Campaigns: []models.ContactCampaign{
+				{
+					ID:   campaign.ID,
+					Name: campaign.Name,
+				},
+			},
 		})
 	}
 
@@ -210,9 +235,11 @@ func (r *CampaignsRepository) AttachContact(ctx context.Context, campaignID, con
 	}
 
 	update := bson.M{
+		"$addToSet": bson.M{
+			"campaign_ids": campaignID,
+		},
 		"$set": bson.M{
-			"campaign_id": campaignID,
-			"updated_at":  time.Now().UTC().Format(time.RFC3339),
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
 		},
 	}
 
@@ -258,9 +285,11 @@ func (r *CampaignsRepository) AttachContacts(ctx context.Context, campaignID str
 		ctx,
 		bson.M{"id": bson.M{"$in": trimmedIDs}},
 		bson.M{
+			"$addToSet": bson.M{
+				"campaign_ids": bson.M{"$each": trimmedIDsToCampaigns(campaignID)},
+			},
 			"$set": bson.M{
-				"campaign_id": campaignID,
-				"updated_at":  time.Now().UTC().Format(time.RFC3339),
+				"updated_at": time.Now().UTC().Format(time.RFC3339),
 			},
 		},
 	)
@@ -278,10 +307,19 @@ func (r *CampaignsRepository) RemoveContact(ctx context.Context, campaignID, con
 
 	result := r.contactsCollection.FindOneAndUpdate(
 		ctx,
-		bson.M{"id": contactID, "campaign_id": campaignID},
+		bson.M{
+			"id": contactID,
+			"$or": []bson.M{
+				{"campaign_id": campaignID},
+				{"campaign_ids": campaignID},
+			},
+		},
 		bson.M{
 			"$set": bson.M{
 				"updated_at": time.Now().UTC().Format(time.RFC3339),
+			},
+			"$pull": bson.M{
+				"campaign_ids": campaignID,
 			},
 			"$unset": bson.M{
 				"campaign_id": "",
@@ -299,4 +337,12 @@ func (r *CampaignsRepository) RemoveContact(ctx context.Context, campaignID, con
 	}
 
 	return &contact, nil
+}
+
+func trimmedIDsToCampaigns(campaignID string) []string {
+	if strings.TrimSpace(campaignID) == "" {
+		return []string{}
+	}
+
+	return []string{strings.TrimSpace(campaignID)}
 }

@@ -62,6 +62,9 @@ func (r *ContactsRepository) EnsureCollection(ctx context.Context) error {
 		{
 			Keys: bson.D{{Key: "campaign_id", Value: 1}},
 		},
+		{
+			Keys: bson.D{{Key: "campaign_ids", Value: 1}},
+		},
 	}
 
 	_, err = r.collection.Indexes().CreateMany(ctx, indexModels)
@@ -100,7 +103,15 @@ func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64
 		filter["status"] = normalizedStatus
 	}
 	if strings.TrimSpace(campaignID) != "" {
-		filter["campaign_id"] = strings.TrimSpace(campaignID)
+		trimmedCampaignID := strings.TrimSpace(campaignID)
+		filter["$and"] = []bson.M{
+			{
+				"$or": []bson.M{
+					{"campaign_id": trimmedCampaignID},
+					{"campaign_ids": trimmedCampaignID},
+				},
+			},
+		}
 	}
 
 	total, err := r.collection.CountDocuments(ctx, filter)
@@ -126,24 +137,31 @@ func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64
 			return nil, 0, err
 		}
 
-		var campaign *models.ContactCampaign
-		if strings.TrimSpace(contact.CampaignID) != "" {
+		campaignIDs := normalizeCampaignIDs(contact)
+		campaigns := make([]models.ContactCampaign, 0, len(campaignIDs))
+		for _, campaignID := range campaignIDs {
 			var campaignDoc models.Campaign
-			err := r.campaignsCollection.FindOne(ctx, bson.M{"id": contact.CampaignID}).Decode(&campaignDoc)
+			err := r.campaignsCollection.FindOne(ctx, bson.M{"id": campaignID}).Decode(&campaignDoc)
 			if err != nil && err != mongo.ErrNoDocuments {
 				return nil, 0, err
 			}
 			if err == nil {
-				campaign = &models.ContactCampaign{
+				campaigns = append(campaigns, models.ContactCampaign{
 					ID:   campaignDoc.ID,
 					Name: campaignDoc.Name,
-				}
+				})
 			}
 		}
 
+		var campaign *models.ContactCampaign
+		if len(campaigns) > 0 {
+			campaign = &campaigns[0]
+		}
+
 		contacts = append(contacts, models.ContactListItem{
-			Contact:  contact,
-			Campaign: campaign,
+			Contact:   contact,
+			Campaign:  campaign,
+			Campaigns: campaigns,
 		})
 	}
 
@@ -195,4 +213,25 @@ func IsDuplicateKeyError(err error) bool {
 	}
 
 	return mongo.IsDuplicateKeyError(err) || strings.Contains(strings.ToLower(fmt.Sprint(err)), "e11000")
+}
+
+func normalizeCampaignIDs(contact models.Contact) []string {
+	ids := make([]string, 0, len(contact.CampaignIDs)+1)
+	seen := map[string]bool{}
+
+	if trimmed := strings.TrimSpace(contact.CampaignID); trimmed != "" {
+		ids = append(ids, trimmed)
+		seen[trimmed] = true
+	}
+
+	for _, campaignID := range contact.CampaignIDs {
+		trimmed := strings.TrimSpace(campaignID)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		ids = append(ids, trimmed)
+		seen[trimmed] = true
+	}
+
+	return ids
 }

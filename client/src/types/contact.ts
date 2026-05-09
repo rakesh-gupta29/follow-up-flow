@@ -17,8 +17,8 @@ export type Contact = {
 export type ContactCampaign = {
   id: string
   name: string
-} | null
+}
 
 export type ContactListItem = Contact & {
-  campaign?: ContactCampaign
+  campaigns?: ContactCampaign[]
 }

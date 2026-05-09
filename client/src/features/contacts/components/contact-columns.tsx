@@ -21,9 +21,12 @@ export const contactColumns: ContactColumn<ContactListItem>[] = [
     cell: (contact) => contact.company || "No company",
   },
   {
-    id: "campaign",
-    header: "Campaign",
-    cell: (contact) => contact.campaign?.name || "Unassigned",
+    id: "campaigns",
+    header: "Campaigns",
+    cell: (contact) =>
+      contact.campaigns && contact.campaigns.length > 0
+        ? `${contact.campaigns.length} campaign${contact.campaigns.length === 1 ? "" : "s"}`
+        : "Unassigned",
   },
   {
     id: "status",
