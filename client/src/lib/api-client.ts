@@ -3,7 +3,8 @@ import axios from "axios"
 import { getAccessToken } from "./access-token"
 
 export const apiClient = axios.create({
-  baseURL: "http://localhost:4000",
+  baseURL: import.meta.env.VITE_API_URL || "/api",
+
   headers: {
     "Content-Type": "application/json",
   },
