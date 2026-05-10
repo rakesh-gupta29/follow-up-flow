@@ -8,8 +8,10 @@ export type AddContactInput = {
   email: string
   first_name: string
   last_name: string
+  property_name?: string
   phone?: string
-  company?: string
+  questionnaire_url?: string
+  thread_id?: string
   status: ContactStatus
 }
 

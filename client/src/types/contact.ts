@@ -7,12 +7,12 @@ export type Contact = {
   first_name: string
   last_name: string
   phone?: string
-  company?: string
-  tags?: string[]
+  property_name?: string
+  questionnaire_url?: string
+  thread_id?: string
   campaign_id?: string
   campaign_ids?: string[]
   status: ContactStatus
-  meta?: Record<string, string>
   created_at: string
   updated_at: string
   campaign_memberships?: ContactCampaignMembership[]
@@ -41,6 +41,7 @@ export type ContactCampaignMembership = {
   campaign?: {
     id?: string
     name?: string
+    stage?: number
   }
 }
 

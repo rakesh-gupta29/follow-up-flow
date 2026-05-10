@@ -16,9 +16,24 @@ export const contactColumns: ContactColumn<ContactListItem>[] = [
     cell: (contact) => `${contact.first_name} ${contact.last_name}`.trim() || contact.email,
   },
   {
-    id: "company",
+    id: "email",
+    header: "Email",
+    cell: (contact) => contact.email,
+  },
+  {
+    id: "phone",
+    header: "Phone",
+    cell: (contact) => contact.phone || "-",
+  },
+  {
+    id: "property_name",
     header: "Company",
-    cell: (contact) => contact.company || "No company",
+    cell: (contact) => contact.property_name || "-",
+  },
+  {
+    id: "questionnaire_url",
+    header: "Questionnaire",
+    cell: (contact) => contact.questionnaire_url || "-",
   },
   {
     id: "campaigns",
@@ -42,19 +57,24 @@ export const campaignContactColumns: ContactColumn<ContactListItem>[] = [
     cell: (contact) => `${contact.first_name} ${contact.last_name}`.trim() || contact.email,
   },
   {
-    id: "company",
+    id: "email",
+    header: "Email",
+    cell: (contact) => contact.email,
+  },
+  {
+    id: "phone",
+    header: "Phone",
+    cell: (contact) => contact.phone || "-",
+  },
+  {
+    id: "property_name",
     header: "Company",
-    cell: (contact) => contact.company || "No company",
+    cell: (contact) => contact.property_name || "-",
   },
   {
-    id: "current-campaign",
-    header: "Current campaign",
-    cell: (contact) => contact.campaign?.name || "Unassigned",
-  },
-  {
-    id: "current-state",
-    header: "Current state",
-    cell: (contact) => contact.campaign?.status || "Unknown",
+    id: "questionnaire_url",
+    header: "Questionnaire",
+    cell: (contact) => contact.questionnaire_url || "-",
   },
   {
     id: "logs",

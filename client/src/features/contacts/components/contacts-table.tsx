@@ -23,6 +23,7 @@ import { campaignContactColumns, contactColumns } from "./contact-columns"
 import type {
   ContactCampaign,
   ContactCampaignMembership,
+  CampaignContactStatus,
   ContactListItem,
 } from "../../../types/contact"
 
@@ -44,6 +45,44 @@ function getStatusVariant(status: ContactListItem["status"]) {
   }
 
   return "outline"
+}
+
+function getCampaignStatusVariant(status: CampaignContactStatus) {
+  if (status === "queued") {
+    return "secondary"
+  }
+
+  if (status === "in_progress") {
+    return "default"
+  }
+
+  if (status === "success") {
+    return "outline"
+  }
+
+  return "outline"
+}
+
+function getCurrentQueuedMembership(contact: ContactListItem) {
+  const queuedMemberships =
+    contact.campaign_memberships?.filter(
+      (membership) => membership.status === "queued"
+    ) ?? []
+
+  if (queuedMemberships.length === 0) {
+    return null
+  }
+
+  return queuedMemberships.reduce((currentHighest, membership) => {
+    const currentStage = currentHighest.campaign?.stage ?? -1
+    const nextStage = membership.campaign?.stage ?? -1
+
+    if (nextStage > currentStage) {
+      return membership
+    }
+
+    return currentHighest
+  })
 }
 
 export function ContactsTable({
@@ -109,6 +148,7 @@ export function ContactsTable({
     return matchingCampaign?.name || "Unknown campaign"
   }
 
+
   return (
     <>
       <div className="overflow-hidden rounded-xl border">
@@ -143,12 +183,38 @@ export function ContactsTable({
                         <Badge variant={getStatusVariant(contact.status)}>
                           {column.cell(contact)}
                         </Badge>
+                      ) : column.id === "current-campaign" ? (
+                        getCurrentQueuedMembership(contact)?.campaign?.name || "-"
                       ) : column.id === "campaigns" ? (
                         renderCampaignCell(contact.campaigns, contact)
                       ) : column.id === "current-state" ? (
-                        <Badge variant="secondary">{column.cell(contact)}</Badge>
+                        getCurrentQueuedMembership(contact) ? (
+                          <Badge
+                            variant={getCampaignStatusVariant(
+                              getCurrentQueuedMembership(contact)!.status
+                            )}
+                          >
+                            {getCurrentQueuedMembership(contact)!.status.replaceAll("_", " ")}
+                          </Badge>
+                        ) : (
+                          "-"
+                        )
                       ) : column.id === "logs" ? (
                         renderLogsButton(contact)
+                      ) : column.id === "questionnaire_url" ? (
+                        contact.questionnaire_url ? (
+                          <a
+                            href={contact.questionnaire_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary underline-offset-4 hover:underline"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            Open
+                          </a>
+                        ) : (
+                          "-"
+                        )
                       ) : (
                         column.cell(contact)
                       )}
@@ -220,9 +286,9 @@ export function ContactsTable({
           </DialogHeader>
           <DialogBody className="space-y-3">
             {logsContact?.campaign_memberships &&
-            logsContact.campaign_memberships.length > 0 ? (
-              logsContact.campaign_memberships.map((membership, index) => (
-                <div
+              logsContact.campaign_memberships.length > 0 ? (
+              logsContact.campaign_memberships.map((membership, index) => {
+                return <div
                   key={`${membership.campaign_id}-${membership.created_at}-${index}`}
                   className="rounded-lg border p-3"
                 >
@@ -239,7 +305,7 @@ export function ContactsTable({
                     <p>Updated: {new Date(membership.updated_at).toLocaleString()}</p>
                   </div>
                 </div>
-              ))
+              })
             ) : (
               <p className="text-muted-foreground text-sm">
                 No campaign memberships available for this contact.

@@ -15,8 +15,10 @@ const addContactSchema = z.object({
   email: z.email("Enter a valid email address"),
   first_name: z.string().min(1, "First name is required"),
   last_name: z.string().min(1, "Last name is required"),
+  property_name: z.string().optional(),
   phone: z.string().optional(),
-  company: z.string().optional(),
+  questionnaire_url: z.string().optional(),
+  thread_id: z.string().optional(),
   status: z.enum(["active", "unsubscribed", "bounced"]),
 })
 
@@ -31,8 +33,10 @@ export function AddContactsPage() {
       email: "",
       first_name: "",
       last_name: "",
+      property_name: "",
       phone: "",
-      company: "",
+      questionnaire_url: "",
+      thread_id: "",
       status: "active",
     },
   })
@@ -40,8 +44,10 @@ export function AddContactsPage() {
   const onSubmit = form.handleSubmit(async (values) => {
     await addContactMutation.mutateAsync({
       ...values,
+      property_name: values.property_name || undefined,
       phone: values.phone || undefined,
-      company: values.company || undefined,
+      questionnaire_url: values.questionnaire_url || undefined,
+      thread_id: values.thread_id || undefined,
       status: values.status as ContactStatus,
     })
     navigate("/contacts", { replace: true })
@@ -85,8 +91,19 @@ export function AddContactsPage() {
               <Input id="phone" {...form.register("phone")} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="company">Company</Label>
-              <Input id="company" {...form.register("company")} />
+              <Label htmlFor="property_name">Company</Label>
+              <Input id="property_name" {...form.register("property_name")} />
+            </div>
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="questionnaire_url">Questionnaire URL</Label>
+              <Input id="questionnaire_url" {...form.register("questionnaire_url")} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="thread_id">Thread ID</Label>
+              <Input id="thread_id" {...form.register("thread_id")} />
             </div>
           </div>
 

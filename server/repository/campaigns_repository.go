@@ -188,7 +188,10 @@ func (r *CampaignsRepository) ListCampaignContacts(ctx context.Context, campaign
 				{"email": bson.M{"$regex": pattern, "$options": "i"}},
 				{"first_name": bson.M{"$regex": pattern, "$options": "i"}},
 				{"last_name": bson.M{"$regex": pattern, "$options": "i"}},
-				{"company": bson.M{"$regex": pattern, "$options": "i"}},
+				{"property_name": bson.M{"$regex": pattern, "$options": "i"}},
+				{"phone": bson.M{"$regex": pattern, "$options": "i"}},
+				{"questionnaire_url": bson.M{"$regex": pattern, "$options": "i"}},
+				{"thread_id": bson.M{"$regex": pattern, "$options": "i"}},
 			},
 		})
 	}

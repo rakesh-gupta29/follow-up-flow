@@ -98,7 +98,10 @@ func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64
 			{"email": bson.M{"$regex": pattern, "$options": "i"}},
 			{"first_name": bson.M{"$regex": pattern, "$options": "i"}},
 			{"last_name": bson.M{"$regex": pattern, "$options": "i"}},
-			{"company": bson.M{"$regex": pattern, "$options": "i"}},
+			{"property_name": bson.M{"$regex": pattern, "$options": "i"}},
+			{"phone": bson.M{"$regex": pattern, "$options": "i"}},
+			{"questionnaire_url": bson.M{"$regex": pattern, "$options": "i"}},
+			{"thread_id": bson.M{"$regex": pattern, "$options": "i"}},
 		}
 	}
 
@@ -211,6 +214,132 @@ func (r *ContactsRepository) DisableContact(ctx context.Context, id string) (*mo
 	return &contact, nil
 }
 
+func (r *ContactsRepository) UpdateThreadID(ctx context.Context, id, threadID string) (*models.Contact, error) {
+	filter := bson.M{"id": id}
+	update := bson.M{
+		"$set": bson.M{
+			"thread_id":  threadID,
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+
+	result := r.collection.FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After))
+	if result.Err() != nil {
+		return nil, result.Err()
+	}
+
+	var contact models.Contact
+	if err := result.Decode(&contact); err != nil {
+		return nil, err
+	}
+
+	return &contact, nil
+}
+
+func (r *ContactsRepository) UpdateCallID(ctx context.Context, id, callID string) (*models.Contact, error) {
+	filter := bson.M{"id": id}
+	update := bson.M{
+		"$set": bson.M{
+			"call_id":    callID,
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+
+	result := r.collection.FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After))
+	if result.Err() != nil {
+		return nil, result.Err()
+	}
+
+	var contact models.Contact
+	if err := result.Decode(&contact); err != nil {
+		return nil, err
+	}
+
+	return &contact, nil
+}
+
+func (r *ContactsRepository) UpdateCampaignStatusByCallID(ctx context.Context, callID, status, nextCampaignID string) (*models.Contact, error) {
+	var contact models.Contact
+	if err := r.collection.FindOne(ctx, bson.M{"call_id": callID}).Decode(&contact); err != nil {
+		return nil, err
+	}
+
+	memberships := normalizeCampaignMemberships(contact)
+	if len(memberships) == 0 {
+		return nil, mongo.ErrNoDocuments
+	}
+
+	index := 0
+	for i, membership := range memberships {
+		if membership.Status == models.CampaignContactStatusInProgress {
+			index = i
+			break
+		}
+		if membership.Status == models.CampaignContactStatusQueued {
+			index = i
+		}
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	nextStatus := models.CampaignContactStatus(strings.TrimSpace(status))
+
+	memberships[index].Status = nextStatus
+	memberships[index].UpdatedAt = now
+
+	if trimmedNextCampaignID := strings.TrimSpace(nextCampaignID); trimmedNextCampaignID != "" {
+		nextIndex := findCampaignMembershipIndex(memberships, trimmedNextCampaignID)
+		if trimmedNextCampaignID != memberships[index].CampaignID && nextIndex == -1 {
+			memberships = append(memberships, models.ContactCampaignMembership{
+				CampaignID: trimmedNextCampaignID,
+				Status:     models.CampaignContactStatusQueued,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			})
+			contact.CampaignLogs = append(contact.CampaignLogs, models.ContactCampaignLog{
+				CampaignID: trimmedNextCampaignID,
+				Status:     models.CampaignContactStatusQueued,
+				Action:     "queued_next_campaign",
+				CreatedAt:  now,
+			})
+		}
+	}
+
+	contact.CampaignMemberships = memberships
+	contact.CampaignIDs = campaignIDsFromMemberships(memberships)
+	if len(contact.CampaignIDs) > 0 {
+		contact.CampaignID = contact.CampaignIDs[0]
+	}
+	contact.CampaignLogs = append(contact.CampaignLogs, models.ContactCampaignLog{
+		CampaignID: memberships[index].CampaignID,
+		Status:     nextStatus,
+		Action:     "status_updated",
+		CreatedAt:  now,
+	})
+	contact.UpdatedAt = now
+
+	update := bson.M{
+		"$set": bson.M{
+			"campaign_id":          contact.CampaignID,
+			"campaign_ids":         contact.CampaignIDs,
+			"campaign_memberships": contact.CampaignMemberships,
+			"campaign_logs":        contact.CampaignLogs,
+			"updated_at":           contact.UpdatedAt,
+		},
+	}
+
+	result := r.collection.FindOneAndUpdate(ctx, bson.M{"id": contact.ID}, update, options.FindOneAndUpdate().SetReturnDocument(options.After))
+	if result.Err() != nil {
+		return nil, result.Err()
+	}
+
+	var updatedContact models.Contact
+	if err := result.Decode(&updatedContact); err != nil {
+		return nil, err
+	}
+
+	return &updatedContact, nil
+}
+
 func normalizeStatus(status models.ContactStatus) models.ContactStatus {
 	switch strings.ToLower(string(status)) {
 	case string(models.ContactStatusActive):
@@ -273,7 +402,10 @@ func normalizeCampaignMembershipStatus(status models.CampaignContactStatus) mode
 	case string(models.CampaignContactStatusFailed):
 		return models.CampaignContactStatusFailed
 	default:
-		return models.CampaignContactStatusQueued
+		if strings.TrimSpace(string(status)) == "" {
+			return models.CampaignContactStatusQueued
+		}
+		return status
 	}
 }
 

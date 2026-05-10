@@ -22,14 +22,15 @@ func NewContactsHandler(repo *repository.ContactsRepository) *ContactsHandler {
 
 func (h *ContactsHandler) AddContact(c fiber.Ctx) error {
 	var input struct {
-		Email     string            `json:"email"`
-		FirstName string            `json:"first_name"`
-		LastName  string            `json:"last_name"`
-		Phone     string            `json:"phone"`
-		Company   string            `json:"company"`
-		Tags      []string          `json:"tags"`
-		Status    string            `json:"status"`
-		Meta      map[string]string `json:"meta"`
+		Email            string `json:"email"`
+		FirstName        string `json:"first_name"`
+		LastName         string `json:"last_name"`
+		PropertyName     string `json:"property_name"`
+		Phone            string `json:"phone"`
+		QuestionnaireURL string `json:"questionnaire_url"`
+		ThreadID         string `json:"thread_id"`
+		CallID           string `json:"call_id"`
+		Status           string `json:"status"`
 	}
 
 	if err := c.Bind().Body(&input); err != nil {
@@ -53,14 +54,15 @@ func (h *ContactsHandler) AddContact(c fiber.Ctx) error {
 	}
 
 	contact, err := h.repo.CreateContact(c.Context(), models.Contact{
-		Email:     strings.TrimSpace(input.Email),
-		FirstName: strings.TrimSpace(input.FirstName),
-		LastName:  strings.TrimSpace(input.LastName),
-		Phone:     strings.TrimSpace(input.Phone),
-		Company:   strings.TrimSpace(input.Company),
-		Tags:      input.Tags,
-		Status:    status,
-		Meta:      input.Meta,
+		Email:            strings.TrimSpace(input.Email),
+		FirstName:        strings.TrimSpace(input.FirstName),
+		LastName:         strings.TrimSpace(input.LastName),
+		PropertyName:     strings.TrimSpace(input.PropertyName),
+		Phone:            strings.TrimSpace(input.Phone),
+		QuestionnaireURL: strings.TrimSpace(input.QuestionnaireURL),
+		ThreadID:         strings.TrimSpace(input.ThreadID),
+		CallID:           strings.TrimSpace(input.CallID),
+		Status:           status,
 	})
 	if err != nil {
 		if repository.IsDuplicateKeyError(err) {
@@ -138,6 +140,84 @@ func (h *ContactsHandler) DisableContact(c fiber.Ctx) error {
 		}
 
 		return response.InternalError(c, "failed to disable contact")
+	}
+
+	return response.Send(c, contact)
+}
+
+func (h *ContactsHandler) UpdateThreadID(c fiber.Ctx) error {
+	contactID := strings.TrimSpace(c.Params("id"))
+	threadID := strings.TrimSpace(c.Params("threadId"))
+
+	if contactID == "" {
+		return response.BadRequest(c, "id is required")
+	}
+	if threadID == "" {
+		return response.BadRequest(c, "threadId is required")
+	}
+
+	contact, err := h.repo.UpdateThreadID(c.Context(), contactID, threadID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return response.NotFound(c, "contact not found")
+		}
+
+		return response.InternalError(c, "failed to update thread id")
+	}
+
+	return response.Send(c, contact)
+}
+
+func (h *ContactsHandler) UpdateCallID(c fiber.Ctx) error {
+	contactID := strings.TrimSpace(c.Params("id"))
+	callID := strings.TrimSpace(c.Params("callId"))
+
+	if contactID == "" {
+		return response.BadRequest(c, "id is required")
+	}
+	if callID == "" {
+		return response.BadRequest(c, "callId is required")
+	}
+
+	contact, err := h.repo.UpdateCallID(c.Context(), contactID, callID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return response.NotFound(c, "contact not found")
+		}
+
+		return response.InternalError(c, "failed to update call id")
+	}
+
+	return response.Send(c, contact)
+}
+
+func (h *ContactsHandler) UpdateCampaignStatusByCallID(c fiber.Ctx) error {
+	callID := strings.TrimSpace(c.Params("callId"))
+	if callID == "" {
+		return response.BadRequest(c, "callId is required")
+	}
+
+	var input struct {
+		Status         string `json:"status"`
+		NextCampaignID string `json:"next_campaign_id"`
+	}
+
+	if err := c.Bind().Body(&input); err != nil {
+		return response.BadRequest(c, "Invalid input")
+	}
+
+	status := strings.TrimSpace(input.Status)
+	if status == "" {
+		return response.BadRequest(c, "status is required")
+	}
+
+	contact, err := h.repo.UpdateCampaignStatusByCallID(c.Context(), callID, status, strings.TrimSpace(input.NextCampaignID))
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return response.NotFound(c, "contact not found")
+		}
+
+		return response.InternalError(c, "failed to update campaign status by call id")
 	}
 
 	return response.Send(c, contact)

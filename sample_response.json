@@ -1,0 +1,72 @@
+[
+    {
+        "headers": {
+            "host": "n8n-production-d2ce2.up.railway.app",
+            "user-agent": "ElevenLabs/1.0",
+            "content-length": "1096",
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate, br",
+            "content-type": "application/json",
+            "elevenlabs-signature": "t=1778391838,v0=2c563997d1a8f1873c841521d02814431d5371015351e49b952b995265818a98",
+            "x-forwarded-for": "34.59.11.47",
+            "x-forwarded-host": "n8n-production-d2ce2.up.railway.app",
+            "x-forwarded-proto": "https",
+            "x-railway-edge": "railway/us-west2",
+            "x-railway-request-id": "K3AWpyfoTCm32QWKlt7tkg",
+            "x-real-ip": "34.59.11.47",
+            "x-request-start": "1778391838727"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+            "type": "call_initiation_failure",
+            "event_timestamp": 1778391838,
+            "data": {
+                "agent_id": "agent_0301kqwtnm1zf4m9t1tbt54bwa7e",
+                "agent_name": "adam",
+                "conversation_id": "conv_5401kr86ka8dfjvvrdb36csf7s5f",
+                "user_id": "+916261173739",
+                "failure_reason": "busy",
+                "metadata": {
+                    "type": "twilio",
+                    "body": {
+                        "Called": "+916261173739",
+                        "ToState": "",
+                        "CallerCountry": "US",
+                        "Direction": "outbound-api",
+                        "Timestamp": "Sun, 10 May 2026 05:43:58 +0000",
+                        "CallbackSource": "call-progress-events",
+                        "SipResponseCode": "486",
+                        "CallerState": "",
+                        "ToZip": "",
+                        "SequenceNumber": "2",
+                        "CallSid": "CA0309f9632336b525b6ee5b6d3e9109e7",
+                        "To": "+916261173739",
+                        "CallerZip": "",
+                        "ToCountry": "IN",
+                        "CalledZip": "",
+                        "ApiVersion": "2010-04-01",
+                        "CalledCity": "",
+                        "CallStatus": "busy",
+                        "Duration": "0",
+                        "From": "+18334089479",
+                        "CallDuration": "0",
+                        "AccountSid": "ACc39722ee4f29d6df3486b35c0cd839c7",
+                        "CalledCountry": "IN",
+                        "CallerCity": "",
+                        "ToCity": "",
+                        "FromCountry": "US",
+                        "Caller": "+18334089479",
+                        "FromCity": "",
+                        "CalledState": "",
+                        "FromZip": "",
+                        "FromState": ""
+                    }
+                },
+                "batch_call_id": "btcal_2801kr86k9yse3cspvhpbavyc26g"
+            }
+        },
+        "webhookUrl": "https://n8n-production-d2ce2.up.railway.app/webhook-test/283b2819-00b7-408e-98e6-afd005e64cb6",
+        "executionMode": "test"
+    }
+]
