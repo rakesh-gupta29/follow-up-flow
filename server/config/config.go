@@ -18,6 +18,7 @@ type Config struct {
 	DBPort     string
 	DBName     string
 	DBHost     string
+	DBURI      string
 }
 
 var AppConfig Config
@@ -40,10 +41,14 @@ func init() {
 		DBHost:     getEnv("DB_HOST"),
 		DBPort:     getEnv("DB_PORT"),
 		DBName:     getEnv("DB_NAME"),
+		DBURI:      getEnv("DB_URI"),
 	}
 }
 
 func (c *Config) DatabaseURL() string {
+	if c.DBURI != "" {
+		return c.DBURI
+	}
 	return fmt.Sprintf("mongodb://%s:%s", c.DBHost, c.DBPort)
 }
 
