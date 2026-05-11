@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -19,6 +18,7 @@ const appDatabaseName = "nudgebuddy_db"
 type ContactsRepository struct {
 	client              *mongo.Client
 	collection          *mongo.Collection
+	deletedCollection   *mongo.Collection
 	campaignsCollection *mongo.Collection
 }
 
@@ -26,6 +26,7 @@ func NewContactsRepository(db *mongo.Client) *ContactsRepository {
 	return &ContactsRepository{
 		client:              db,
 		collection:          db.Database(appDatabaseName).Collection("contacts"),
+		deletedCollection:   db.Database(appDatabaseName).Collection("deleted_contacts"),
 		campaignsCollection: db.Database(appDatabaseName).Collection("campaigns"),
 	}
 }
@@ -47,14 +48,29 @@ func (r *ContactsRepository) EnsureCollection(ctx context.Context) error {
 		}
 	}
 
+	deletedCollections, err := db.ListCollectionNames(ctx, bson.M{"name": "deleted_contacts"})
+	if err != nil {
+		return err
+	}
+
+	if len(deletedCollections) == 0 {
+		if err := db.CreateCollection(ctx, "deleted_contacts"); err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "exists") {
+				return err
+			}
+		}
+	}
+
 	indexModels := []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "id", Value: 1}},
 			Options: options.Index().SetUnique(true),
 		},
 		{
-			Keys:    bson.D{{Key: "email", Value: 1}},
-			Options: options.Index().SetUnique(true),
+			Keys: bson.D{{Key: "email", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "phone", Value: 1}},
 		},
 		{
 			Keys: bson.D{{Key: "status", Value: 1}},
@@ -71,6 +87,22 @@ func (r *ContactsRepository) EnsureCollection(ctx context.Context) error {
 	}
 
 	_, err = r.collection.Indexes().CreateMany(ctx, indexModels)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.deletedCollection.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "id", Value: 1}},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{{Key: "email", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "deleted_at", Value: 1}},
+		},
+	})
 	return err
 }
 
@@ -192,6 +224,53 @@ func (r *ContactsRepository) ListContacts(ctx context.Context, page, limit int64
 	return contacts, total, nil
 }
 
+func (r *ContactsRepository) ListDeletedContacts(ctx context.Context, page, limit int64, search string) ([]models.Contact, int64, error) {
+	filter := bson.M{}
+
+	if trimmedSearch := strings.TrimSpace(search); trimmedSearch != "" {
+		pattern := regexp.QuoteMeta(trimmedSearch)
+		filter["$or"] = []bson.M{
+			{"email": bson.M{"$regex": pattern, "$options": "i"}},
+			{"first_name": bson.M{"$regex": pattern, "$options": "i"}},
+			{"last_name": bson.M{"$regex": pattern, "$options": "i"}},
+			{"property_name": bson.M{"$regex": pattern, "$options": "i"}},
+			{"phone": bson.M{"$regex": pattern, "$options": "i"}},
+			{"questionnaire_url": bson.M{"$regex": pattern, "$options": "i"}},
+			{"thread_id": bson.M{"$regex": pattern, "$options": "i"}},
+			{"call_id": bson.M{"$regex": pattern, "$options": "i"}},
+		}
+	}
+
+	total, err := r.deletedCollection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	cursor, err := r.deletedCollection.Find(ctx, filter, options.Find().
+		SetSkip((page-1)*limit).
+		SetLimit(limit).
+		SetSort(bson.D{{Key: "deleted_at", Value: -1}}))
+	if err != nil {
+		return nil, 0, err
+	}
+	defer cursor.Close(ctx)
+
+	contacts := make([]models.Contact, 0)
+	for cursor.Next(ctx) {
+		var contact models.Contact
+		if err := cursor.Decode(&contact); err != nil {
+			return nil, 0, err
+		}
+		contacts = append(contacts, contact)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return contacts, total, nil
+}
+
 func (r *ContactsRepository) DisableContact(ctx context.Context, id string) (*models.Contact, error) {
 	filter := bson.M{"id": id}
 	update := bson.M{
@@ -212,6 +291,56 @@ func (r *ContactsRepository) DisableContact(ctx context.Context, id string) (*mo
 	}
 
 	return &contact, nil
+}
+
+func (r *ContactsRepository) UpdateContact(ctx context.Context, id string, updates bson.M) (*models.Contact, error) {
+	if len(updates) == 0 {
+		return nil, mongo.ErrNoDocuments
+	}
+
+	updates["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+	result := r.collection.FindOneAndUpdate(ctx, bson.M{"id": id}, bson.M{
+		"$set": updates,
+	}, options.FindOneAndUpdate().SetReturnDocument(options.After))
+	if result.Err() != nil {
+		return nil, result.Err()
+	}
+
+	var contact models.Contact
+	if err := result.Decode(&contact); err != nil {
+		return nil, err
+	}
+
+	return &contact, nil
+}
+
+func (r *ContactsRepository) SoftDeleteContact(ctx context.Context, id string) (*models.Contact, error) {
+	var contact models.Contact
+	if err := r.collection.FindOne(ctx, bson.M{"id": id}).Decode(&contact); err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	contact.DeletedAt = now
+	contact.UpdatedAt = now
+
+	if _, err := r.deletedCollection.InsertOne(ctx, contact); err != nil {
+		return nil, err
+	}
+
+	result := r.collection.FindOneAndDelete(ctx, bson.M{"id": id})
+	if result.Err() != nil {
+		return nil, result.Err()
+	}
+
+	var deletedContact models.Contact
+	if err := result.Decode(&deletedContact); err != nil {
+		return nil, err
+	}
+	deletedContact.DeletedAt = now
+	deletedContact.UpdatedAt = now
+
+	return &deletedContact, nil
 }
 
 func (r *ContactsRepository) UpdateThreadID(ctx context.Context, id, threadID string) (*models.Contact, error) {
@@ -351,14 +480,6 @@ func normalizeStatus(status models.ContactStatus) models.ContactStatus {
 	default:
 		return ""
 	}
-}
-
-func IsDuplicateKeyError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	return mongo.IsDuplicateKeyError(err) || strings.Contains(strings.ToLower(fmt.Sprint(err)), "e11000")
 }
 
 func normalizeCampaignIDs(contact models.Contact) []string {

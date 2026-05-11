@@ -33,6 +33,7 @@ type ContactsTableProps = {
   onToggleContact: (contactId: string, checked: boolean) => void
   onRowClick?: (contact: ContactListItem) => void
   variant?: "default" | "campaign"
+  renderActions?: (contact: ContactListItem) => React.ReactNode
 }
 
 function getStatusVariant(status: ContactListItem["status"]) {
@@ -91,6 +92,7 @@ export function ContactsTable({
   onToggleContact,
   onRowClick,
   variant = "default",
+  renderActions,
 }: ContactsTableProps) {
   const [campaignDetailsContact, setCampaignDetailsContact] = useState<ContactListItem | null>(null)
   const [logsContact, setLogsContact] = useState<ContactListItem | null>(null)
@@ -159,6 +161,7 @@ export function ContactsTable({
               {columns.map((column) => (
                 <TableHead key={column.id}>{column.header}</TableHead>
               ))}
+              {renderActions ? <TableHead className="w-36">Actions</TableHead> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -220,6 +223,11 @@ export function ContactsTable({
                       )}
                     </TableCell>
                   ))}
+                  {renderActions ? (
+                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      {renderActions(contact)}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               )
             })}

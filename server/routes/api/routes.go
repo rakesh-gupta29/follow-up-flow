@@ -23,9 +23,12 @@ func RegisterContactsRoutes(app fiber.Router, contactsHandler *api.ContactsHandl
 	apiGroup := app.Group("/api/v1")
 	apiGroup.Post("/add-contact", contactsHandler.AddContact)
 	apiGroup.Get("/contacts", contactsHandler.ListContacts)
+	apiGroup.Get("/deleted-contacts", contactsHandler.ListDeletedContacts)
+	apiGroup.Patch("/contact/:id", contactsHandler.UpdateContact)
 	apiGroup.Patch("/contact/:id/thread-id/:threadId", contactsHandler.UpdateThreadID)
 	apiGroup.Patch("/contact/:id/call-id/:callId", contactsHandler.UpdateCallID)
 	apiGroup.Patch("/contact/call-id/:callId", contactsHandler.UpdateCampaignStatusByCallID)
+	apiGroup.Delete("/contact/:id", contactsHandler.DeleteContact)
 	apiGroup.Post("/disable", contactsHandler.DisableContact)
 }
 

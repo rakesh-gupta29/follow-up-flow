@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/shingo/server/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -71,49 +70,7 @@ func (r *CampaignsRepository) EnsureCollection(ctx context.Context) error {
 		return err
 	}
 
-	return r.seedDefaultCampaigns(ctx)
-}
-
-func (r *CampaignsRepository) seedDefaultCampaigns(ctx context.Context) error {
-	count, err := r.campaignsCollection.CountDocuments(ctx, bson.M{})
-	if err != nil {
-		return err
-	}
-
-	if count > 0 {
-		return nil
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	campaigns := []any{
-		models.Campaign{
-			ID:          uuid.NewString(),
-			Name:        "Welcome Campaign",
-			Description: "Default onboarding campaign",
-			Stage:       1,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		},
-		models.Campaign{
-			ID:          uuid.NewString(),
-			Name:        "Re-Engagement Campaign",
-			Description: "Default re-engagement campaign",
-			Stage:       2,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		},
-		models.Campaign{
-			ID:          uuid.NewString(),
-			Name:        "Product Update Campaign",
-			Description: "Default product update campaign",
-			Stage:       3,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		},
-	}
-
-	_, err = r.campaignsCollection.InsertMany(ctx, campaigns)
-	return err
+	return nil
 }
 
 func (r *CampaignsRepository) ListCampaigns(ctx context.Context) ([]models.CampaignListItem, error) {

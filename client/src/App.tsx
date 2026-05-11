@@ -6,6 +6,7 @@ import { AddContactsPage } from "./pages/add-contacts-page"
 import { CampaignContactsPage } from "./pages/campaign-contacts-page"
 import { CampaignsPage } from "./pages/campaigns-page"
 import { ContactsPage } from "./pages/contacts-page"
+import { DeletedContactsPage } from "./pages/deleted-contacts-page"
 import { LoginPage } from "./pages/login-page"
 import { ProfilePage } from "./pages/profile-page"
 
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/campaigns/:campaignId/contacts" element={<CampaignContactsPage />} />
           <Route path="/contacts" element={<ContactsPage />} />
           <Route path="/contacts/add" element={<AddContactsPage />} />
+          <Route path="/contacts/deleted" element={<DeletedContactsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
       </Routes>

@@ -55,6 +55,7 @@ type Contact struct {
 	Status              ContactStatus               `json:"status" bson:"status"`
 	CreatedAt           string                      `json:"created_at" bson:"created_at"`
 	UpdatedAt           string                      `json:"updated_at" bson:"updated_at"`
+	DeletedAt           string                      `json:"deleted_at,omitempty" bson:"deleted_at,omitempty"`
 }
 
 type ContactListItem struct {

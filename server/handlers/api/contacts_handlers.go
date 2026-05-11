@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/shingo/server/models"
 	"github.com/shingo/server/repository"
 	"github.com/shingo/server/utils/response"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -65,10 +67,6 @@ func (h *ContactsHandler) AddContact(c fiber.Ctx) error {
 		Status:           status,
 	})
 	if err != nil {
-		if repository.IsDuplicateKeyError(err) {
-			return response.BadRequest(c, "contact with this email already exists")
-		}
-
 		return response.InternalError(c, "failed to create contact")
 	}
 
@@ -143,6 +141,124 @@ func (h *ContactsHandler) DisableContact(c fiber.Ctx) error {
 	}
 
 	return response.Send(c, contact)
+}
+
+func (h *ContactsHandler) UpdateContact(c fiber.Ctx) error {
+	contactID := strings.TrimSpace(c.Params("id"))
+	if contactID == "" {
+		return response.BadRequest(c, "id is required")
+	}
+
+	var input map[string]any
+	if err := c.Bind().Body(&input); err != nil {
+		return response.BadRequest(c, "Invalid input")
+	}
+
+	updates := bson.M{}
+	for key, value := range input {
+		switch key {
+		case "email":
+			email, ok := value.(string)
+			if !ok {
+				return response.BadRequest(c, "email must be a string")
+			}
+			trimmed := strings.TrimSpace(email)
+			if trimmed == "" {
+				return response.BadRequest(c, "email must not be empty")
+			}
+			if _, err := mail.ParseAddress(trimmed); err != nil {
+				return response.BadRequest(c, "email must be valid")
+			}
+			updates["email"] = trimmed
+		case "first_name", "last_name", "property_name", "phone", "questionnaire_url", "thread_id", "call_id":
+			strValue, ok := value.(string)
+			if !ok {
+				return response.BadRequest(c, key+" must be a string")
+			}
+			updates[key] = strings.TrimSpace(strValue)
+		case "status":
+			statusValue, ok := value.(string)
+			if !ok {
+				return response.BadRequest(c, "status must be a string")
+			}
+			normalizedStatus := models.ContactStatus(strings.ToLower(strings.TrimSpace(statusValue)))
+			if normalizedStatus != models.ContactStatusActive &&
+				normalizedStatus != models.ContactStatusUnsubscribed &&
+				normalizedStatus != models.ContactStatusBounced {
+				return response.BadRequest(c, "status must be one of active, unsubscribed or bounced")
+			}
+			updates["status"] = normalizedStatus
+		}
+	}
+
+	if len(updates) == 0 {
+		return response.BadRequest(c, "at least one updatable field is required")
+	}
+
+	contact, err := h.repo.UpdateContact(c.Context(), contactID, updates)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return response.NotFound(c, "contact not found")
+		}
+
+		return response.InternalError(c, "failed to update contact")
+	}
+
+	return response.Send(c, contact)
+}
+
+func (h *ContactsHandler) DeleteContact(c fiber.Ctx) error {
+	contactID := strings.TrimSpace(c.Params("id"))
+	if contactID == "" {
+		return response.BadRequest(c, "id is required")
+	}
+
+	contact, err := h.repo.SoftDeleteContact(c.Context(), contactID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return response.NotFound(c, "contact not found")
+		}
+
+		return response.InternalError(c, "failed to delete contact")
+	}
+
+	return c.Status(http.StatusOK).JSON(fiber.Map{
+		"code": http.StatusOK,
+		"data": contact,
+	})
+}
+
+func (h *ContactsHandler) ListDeletedContacts(c fiber.Ctx) error {
+	page, err := strconv.Atoi(c.Query("page", "1"))
+	if err != nil {
+		page = 1
+	}
+	limit, err := strconv.Atoi(c.Query("limit", "25"))
+	if err != nil {
+		limit = 25
+	}
+	search := c.Query("search", "")
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 25
+	}
+
+	contacts, total, err := h.repo.ListDeletedContacts(c.Context(), int64(page), int64(limit), search)
+	if err != nil {
+		return response.InternalError(c, "failed to fetch deleted contacts")
+	}
+
+	return response.Send(c, fiber.Map{
+		"items": contacts,
+		"pagination": fiber.Map{
+			"page":  page,
+			"limit": limit,
+			"total": total,
+		},
+	})
 }
 
 func (h *ContactsHandler) UpdateThreadID(c fiber.Ctx) error {
