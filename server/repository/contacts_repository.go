@@ -61,6 +61,10 @@ func (r *ContactsRepository) EnsureCollection(ctx context.Context) error {
 		}
 	}
 
+	if err := dropLegacyUniqueContactIndexes(ctx, r.collection); err != nil {
+		return err
+	}
+
 	indexModels := []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "id", Value: 1}},
@@ -104,6 +108,45 @@ func (r *ContactsRepository) EnsureCollection(ctx context.Context) error {
 		},
 	})
 	return err
+}
+
+func dropLegacyUniqueContactIndexes(ctx context.Context, collection *mongo.Collection) error {
+	cursor, err := collection.Indexes().List(ctx)
+	if err != nil {
+		return err
+	}
+	defer cursor.Close(ctx)
+
+	type indexSpec struct {
+		Name   string `bson:"name"`
+		Key    bson.D `bson:"key"`
+		Unique bool   `bson:"unique"`
+	}
+
+	for cursor.Next(ctx) {
+		var spec indexSpec
+		if err := cursor.Decode(&spec); err != nil {
+			return err
+		}
+		if !spec.Unique {
+			continue
+		}
+
+		if len(spec.Key) != 1 {
+			continue
+		}
+
+		keyName := spec.Key[0].Key
+		if keyName != "email" && keyName != "phone" {
+			continue
+		}
+
+		if _, err := collection.Indexes().DropOne(ctx, spec.Name); err != nil {
+			return err
+		}
+	}
+
+	return cursor.Err()
 }
 
 func (r *ContactsRepository) CreateContact(ctx context.Context, contact models.Contact) (*models.Contact, error) {
