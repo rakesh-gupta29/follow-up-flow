@@ -14,6 +14,7 @@ import (
 )
 
 const appDatabaseName = "nudgebuddy_db"
+const callbackCampaignID = "5305a479-ace7-4f1f-854d-11fc225fd0db"
 
 type ContactsRepository struct {
 	client              *mongo.Client
@@ -358,25 +359,76 @@ func (r *ContactsRepository) UpdateContact(ctx context.Context, id string, updat
 }
 
 func (r *ContactsRepository) MarkCallback(ctx context.Context, id string) (*models.Contact, error) {
-	filter := bson.M{"id": id}
+	var contact models.Contact
+	if err := r.collection.FindOne(ctx, bson.M{"id": id}).Decode(&contact); err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	memberships := normalizeCampaignMemberships(contact)
+	index := findCampaignMembershipIndex(memberships, callbackCampaignID)
+
+	if index == -1 {
+		memberships = append(memberships, models.ContactCampaignMembership{
+			CampaignID: callbackCampaignID,
+			Status:     models.CampaignContactStatusCallback,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		})
+	} else {
+		memberships[index].Status = models.CampaignContactStatusCallback
+		memberships[index].UpdatedAt = now
+	}
+
+	contact.Status = models.ContactStatusCallback
+	contact.CampaignMemberships = memberships
+	contact.CampaignIDs = campaignIDsFromMemberships(memberships)
+	if len(contact.CampaignIDs) > 0 {
+		contact.CampaignID = contact.CampaignIDs[0]
+	}
+	contact.CampaignLogs = append(contact.CampaignLogs, models.ContactCampaignLog{
+		CampaignID: callbackCampaignID,
+		Status:     models.CampaignContactStatusCallback,
+		Action:     "marked_callback",
+		CreatedAt:  now,
+	})
+	contact.UpdatedAt = now
+
 	update := bson.M{
 		"$set": bson.M{
-			"status":     models.ContactStatusCallback,
-			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"status":               contact.Status,
+			"campaign_id":          contact.CampaignID,
+			"campaign_ids":         contact.CampaignIDs,
+			"campaign_memberships": contact.CampaignMemberships,
+			"campaign_logs":        contact.CampaignLogs,
+			"updated_at":           contact.UpdatedAt,
 		},
 	}
 
-	result := r.collection.FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After))
+	result := r.collection.FindOneAndUpdate(ctx, bson.M{"id": id}, update, options.FindOneAndUpdate().SetReturnDocument(options.After))
 	if result.Err() != nil {
 		return nil, result.Err()
 	}
 
-	var contact models.Contact
-	if err := result.Decode(&contact); err != nil {
+	var updatedContact models.Contact
+	if err := result.Decode(&updatedContact); err != nil {
 		return nil, err
 	}
 
-	return &contact, nil
+	memberships = normalizeCampaignMemberships(updatedContact)
+	for index := range memberships {
+		var campaignDoc models.Campaign
+		err := r.campaignsCollection.FindOne(ctx, bson.M{"id": memberships[index].CampaignID}).Decode(&campaignDoc)
+		if err != nil && err != mongo.ErrNoDocuments {
+			return nil, err
+		}
+		if err == nil {
+			memberships[index].Campaign = &campaignDoc
+		}
+	}
+	updatedContact.CampaignMemberships = memberships
+
+	return &updatedContact, nil
 }
 
 func (r *ContactsRepository) ListCallbackContacts(ctx context.Context) ([]models.ContactListItem, error) {
@@ -647,6 +699,8 @@ func normalizeCampaignMembershipStatus(status models.CampaignContactStatus) mode
 		return models.CampaignContactStatusSuccess
 	case string(models.CampaignContactStatusFailed):
 		return models.CampaignContactStatusFailed
+	case string(models.CampaignContactStatusCallback):
+		return models.CampaignContactStatusCallback
 	default:
 		if strings.TrimSpace(string(status)) == "" {
 			return models.CampaignContactStatusQueued
