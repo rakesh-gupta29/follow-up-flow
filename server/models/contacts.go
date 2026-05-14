@@ -6,6 +6,7 @@ const (
 	ContactStatusActive       ContactStatus = "active"
 	ContactStatusUnsubscribed ContactStatus = "unsubscribed"
 	ContactStatusBounced      ContactStatus = "bounced"
+	ContactStatusCallback     ContactStatus = "callback"
 )
 
 type CampaignContactStatus string

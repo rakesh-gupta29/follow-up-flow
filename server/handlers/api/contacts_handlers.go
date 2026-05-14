@@ -52,7 +52,9 @@ func (h *ContactsHandler) AddContact(c fiber.Ctx) error {
 	}
 
 	if status != models.ContactStatusActive && status != models.ContactStatusUnsubscribed && status != models.ContactStatusBounced {
-		return response.BadRequest(c, "status must be one of active, unsubscribed or bounced")
+		if status != models.ContactStatusCallback {
+			return response.BadRequest(c, "status must be one of active, unsubscribed, bounced or callback")
+		}
 	}
 
 	contact, err := h.repo.CreateContact(c.Context(), models.Contact{
@@ -97,8 +99,9 @@ func (h *ContactsHandler) ListContacts(c fiber.Ctx) error {
 		normalizedStatus := strings.ToLower(strings.TrimSpace(status))
 		if normalizedStatus != string(models.ContactStatusActive) &&
 			normalizedStatus != string(models.ContactStatusUnsubscribed) &&
-			normalizedStatus != string(models.ContactStatusBounced) {
-			return response.BadRequest(c, "status must be one of active, unsubscribed or bounced")
+			normalizedStatus != string(models.ContactStatusBounced) &&
+			normalizedStatus != string(models.ContactStatusCallback) {
+			return response.BadRequest(c, "status must be one of active, unsubscribed, bounced or callback")
 		}
 		status = normalizedStatus
 	}
@@ -184,8 +187,9 @@ func (h *ContactsHandler) UpdateContact(c fiber.Ctx) error {
 			normalizedStatus := models.ContactStatus(strings.ToLower(strings.TrimSpace(statusValue)))
 			if normalizedStatus != models.ContactStatusActive &&
 				normalizedStatus != models.ContactStatusUnsubscribed &&
-				normalizedStatus != models.ContactStatusBounced {
-				return response.BadRequest(c, "status must be one of active, unsubscribed or bounced")
+				normalizedStatus != models.ContactStatusBounced &&
+				normalizedStatus != models.ContactStatusCallback {
+				return response.BadRequest(c, "status must be one of active, unsubscribed, bounced or callback")
 			}
 			updates["status"] = normalizedStatus
 		}
@@ -337,4 +341,31 @@ func (h *ContactsHandler) UpdateCampaignStatusByCallID(c fiber.Ctx) error {
 	}
 
 	return response.Send(c, contact)
+}
+
+func (h *ContactsHandler) MarkCallback(c fiber.Ctx) error {
+	contactID := strings.TrimSpace(c.Params("id"))
+	if contactID == "" {
+		return response.BadRequest(c, "id is required")
+	}
+
+	contact, err := h.repo.MarkCallback(c.Context(), contactID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return response.NotFound(c, "contact not found")
+		}
+
+		return response.InternalError(c, "failed to update contact callback status")
+	}
+
+	return response.Send(c, contact)
+}
+
+func (h *ContactsHandler) CallbackHandover(c fiber.Ctx) error {
+	contacts, err := h.repo.ListCallbackContacts(c.Context())
+	if err != nil {
+		return response.InternalError(c, "failed to fetch callback contacts")
+	}
+
+	return response.Send(c, contacts)
 }

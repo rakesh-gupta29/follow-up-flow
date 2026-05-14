@@ -357,6 +357,86 @@ func (r *ContactsRepository) UpdateContact(ctx context.Context, id string, updat
 	return &contact, nil
 }
 
+func (r *ContactsRepository) MarkCallback(ctx context.Context, id string) (*models.Contact, error) {
+	filter := bson.M{"id": id}
+	update := bson.M{
+		"$set": bson.M{
+			"status":     models.ContactStatusCallback,
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+
+	result := r.collection.FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After))
+	if result.Err() != nil {
+		return nil, result.Err()
+	}
+
+	var contact models.Contact
+	if err := result.Decode(&contact); err != nil {
+		return nil, err
+	}
+
+	return &contact, nil
+}
+
+func (r *ContactsRepository) ListCallbackContacts(ctx context.Context) ([]models.ContactListItem, error) {
+	cursor, err := r.collection.Find(ctx, bson.M{"status": models.ContactStatusCallback}, options.Find().SetSort(bson.D{{Key: "updated_at", Value: 1}}))
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	contacts := make([]models.ContactListItem, 0)
+	for cursor.Next(ctx) {
+		var contact models.Contact
+		if err := cursor.Decode(&contact); err != nil {
+			return nil, err
+		}
+
+		memberships := normalizeCampaignMemberships(contact)
+		for index := range memberships {
+			var campaignDoc models.Campaign
+			err := r.campaignsCollection.FindOne(ctx, bson.M{"id": memberships[index].CampaignID}).Decode(&campaignDoc)
+			if err != nil && err != mongo.ErrNoDocuments {
+				return nil, err
+			}
+			if err == nil {
+				memberships[index].Campaign = &campaignDoc
+			}
+		}
+		contact.CampaignMemberships = memberships
+
+		campaigns := make([]models.ContactCampaign, 0, len(memberships))
+		for _, membership := range memberships {
+			if membership.Campaign == nil {
+				continue
+			}
+			campaigns = append(campaigns, models.ContactCampaign{
+				ID:     membership.Campaign.ID,
+				Name:   membership.Campaign.Name,
+				Status: membership.Status,
+			})
+		}
+
+		var campaign *models.ContactCampaign
+		if len(campaigns) > 0 {
+			campaign = &campaigns[0]
+		}
+
+		contacts = append(contacts, models.ContactListItem{
+			Contact:   contact,
+			Campaign:  campaign,
+			Campaigns: campaigns,
+		})
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+
+	return contacts, nil
+}
+
 func (r *ContactsRepository) SoftDeleteContact(ctx context.Context, id string) (*models.Contact, error) {
 	var contact models.Contact
 	if err := r.collection.FindOne(ctx, bson.M{"id": id}).Decode(&contact); err != nil {
@@ -520,6 +600,8 @@ func normalizeStatus(status models.ContactStatus) models.ContactStatus {
 		return models.ContactStatusUnsubscribed
 	case string(models.ContactStatusBounced):
 		return models.ContactStatusBounced
+	case string(models.ContactStatusCallback):
+		return models.ContactStatusCallback
 	default:
 		return ""
 	}
