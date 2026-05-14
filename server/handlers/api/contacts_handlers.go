@@ -349,7 +349,7 @@ func (h *ContactsHandler) MarkCallback(c fiber.Ctx) error {
 		return response.BadRequest(c, "id is required")
 	}
 
-	contact, err := h.repo.MarkCallback(c.Context(), contactID)
+	_, err := h.repo.MarkCallback(c.Context(), contactID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return response.NotFound(c, "contact not found")
@@ -358,7 +358,7 @@ func (h *ContactsHandler) MarkCallback(c fiber.Ctx) error {
 		return response.InternalError(c, "failed to update contact callback status")
 	}
 
-	return response.Send(c, contact)
+	return c.Render("callback", fiber.Map{})
 }
 
 func (h *ContactsHandler) CallbackHandover(c fiber.Ctx) error {

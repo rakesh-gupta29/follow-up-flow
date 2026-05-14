@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/template/html/v2"
 	"github.com/shingo/server/config"
 	"github.com/shingo/server/database"
 	"github.com/shingo/server/handlers/api"
@@ -21,7 +22,11 @@ type Application struct {
 }
 
 func New() *Application {
-	server := fiber.New()
+	engine := html.New("./views", ".html")
+
+	server := fiber.New(fiber.Config{
+		Views: engine,
+	})
 	server.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{
