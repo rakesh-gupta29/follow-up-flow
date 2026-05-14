@@ -17,6 +17,7 @@ const (
 	CampaignContactStatusSuccess    CampaignContactStatus = "success"
 	CampaignContactStatusFailed     CampaignContactStatus = "failed"
 	CampaignContactStatusCallback   CampaignContactStatus = "callback"
+	CampaignContactStatusBusy       CampaignContactStatus = "busy"
 )
 
 type ContactCampaign struct {

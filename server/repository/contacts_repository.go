@@ -574,13 +574,18 @@ func (r *ContactsRepository) UpdateCampaignStatusByCallID(ctx context.Context, c
 	}
 
 	index := 0
-	for i, membership := range memberships {
-		if membership.Status == models.CampaignContactStatusInProgress {
-			index = i
-			break
-		}
-		if membership.Status == models.CampaignContactStatusQueued {
-			index = i
+	callbackIndex := findCampaignMembershipIndex(memberships, callbackCampaignID)
+	if callbackIndex != -1 {
+		index = callbackIndex
+	} else {
+		for i, membership := range memberships {
+			if membership.Status == models.CampaignContactStatusInProgress {
+				index = i
+				break
+			}
+			if membership.Status == models.CampaignContactStatusQueued {
+				index = i
+			}
 		}
 	}
 
@@ -701,6 +706,8 @@ func normalizeCampaignMembershipStatus(status models.CampaignContactStatus) mode
 		return models.CampaignContactStatusFailed
 	case string(models.CampaignContactStatusCallback):
 		return models.CampaignContactStatusCallback
+	case string(models.CampaignContactStatusBusy):
+		return models.CampaignContactStatusBusy
 	default:
 		if strings.TrimSpace(string(status)) == "" {
 			return models.CampaignContactStatusQueued
